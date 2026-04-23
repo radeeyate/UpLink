@@ -1,0 +1,11 @@
+(fp_lib_table
+  (version 7)
+  (lib (name "SAM-M10Q-00B")(type "KiCad")(uri "/home/andrew/Documents/KicadLIBS/LIB_SAM-M10Q-00B/SAM-M10Q-00B/KiCad")(options "")(descr ""))
+  (lib (name "114993390")(type "KiCad")(uri "/home/andrew/Documents/KicadLIBS/LIB_114993390/114993390/KiCad")(options "")(descr ""))
+  (lib (name "BC3AAAPC")(type "KiCad")(uri "/home/andrew/Documents/KicadLIBS/BC3AAAPC")(options "")(descr ""))
+  (lib (name "12BH431P-R-GR")(type "KiCad")(uri "/home/andrew/Documents/KicadLIBS/LIB_12BH431P-R-GR/12BH431P-R-GR/KiCad")(options "")(descr ""))
+  (lib (name "ISL9110IRTNZ")(type "KiCad")(uri "/home/andrew/Documents/KicadLIBS/LIB_ISL9110IRTNZ/ISL9110IRTNZ/KiCad")(options "")(descr ""))
+  (lib (name "SMT-1341-T-HT-2")(type "KiCad")(uri "/home/andrew/Documents/KicadLIBS/LIB_SMT-1341-T-HT-2/SMT-1341-T-HT-2/KiCad")(options "")(descr ""))
+  (lib (name "SLW-1678105-6A-N-D")(type "KiCad")(uri "/home/andrew/Documents/KicadLIBS/LIB_SLW-1678105-6A-N-D/SLW-1678105-6A-N-D/KiCad")(options "")(descr ""))
+  (lib (name "TPS631000DRLR")(type "KiCad")(uri "/home/andrew/Documents/KicadLIBS/LIB_TPS631000DRLR/TPS631000DRLR/KiCad")(options "")(descr ""))
+)

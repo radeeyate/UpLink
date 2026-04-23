@@ -1,0 +1,4 @@
+*-backups
+*lck
+*.csv
+\#auto_saved_files#
