@@ -8,4 +8,5 @@
   (lib (name "SMT-1341-T-HT-2")(type "KiCad")(uri "/home/andrew/Documents/KicadLIBS/LIB_SMT-1341-T-HT-2/SMT-1341-T-HT-2/KiCad")(options "")(descr ""))
   (lib (name "SLW-1678105-6A-N-D")(type "KiCad")(uri "/home/andrew/Documents/KicadLIBS/LIB_SLW-1678105-6A-N-D/SLW-1678105-6A-N-D/KiCad")(options "")(descr ""))
   (lib (name "TPS631000DRLR")(type "KiCad")(uri "/home/andrew/Documents/KicadLIBS/LIB_TPS631000DRLR/TPS631000DRLR/KiCad")(options "")(descr ""))
+  (lib (name "CSS-1210TB")(type "KiCad")(uri "/home/andrew/Documents/KicadLIBS/LIB_CSS-1210TB/CSS-1210TB/KiCad")(options "")(descr ""))
 )
