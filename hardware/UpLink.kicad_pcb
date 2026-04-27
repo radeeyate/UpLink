@@ -2920,7 +2920,7 @@
 		(descr "Capacitor SMD 0805 (2012 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf, https://docs.google.com/spreadsheets/d/1BsfQQcO9C6DZCsRaXUlFlo91Tg2WpOkGARC1WS5S8t0/edit?usp=sharing), generated with kicad-footprint-generator")
 		(tags "capacitor")
 		(property "Reference" "C4"
-			(at 2.65 0 0)
+			(at 0.025 -1.575 0)
 			(layer "B.SilkS")
 			(uuid "aa367935-881a-48e6-b68b-5fbf2b01ef6b")
 			(effects
@@ -3242,13 +3242,13 @@
 		(descr "CSS-1210TB-3")
 		(tags "Switch")
 		(property "Reference" "S1"
-			(at 0 0.963 270)
+			(at 5.225 -0.275 180)
 			(layer "B.SilkS")
 			(uuid "453b102b-33ab-41ae-9711-cbd08b067d9e")
 			(effects
 				(font
-					(size 1.27 1.27)
-					(thickness 0.254)
+					(size 1 1)
+					(thickness 0.125)
 				)
 				(justify mirror)
 			)
@@ -4131,7 +4131,7 @@
 		(descr "Through hole straight pin header, 1x02, 2.54mm pitch, single row")
 		(tags "Through hole pin header THT 1x02 2.54mm single row")
 		(property "Reference" "BT1"
-			(at 0 2.38 90)
+			(at 0 2.15 90)
 			(layer "B.SilkS")
 			(uuid "7c92f851-60d7-468b-ba39-14fde7b2dd3d")
 			(effects
