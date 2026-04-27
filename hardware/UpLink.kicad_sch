@@ -6758,30 +6758,6 @@
 			)
 		)
 	)
-	(global_label "VBATT"
-		(shape output)
-		(at 222.25 30.48 90)
-		(fields_autoplaced yes)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left)
-		)
-		(uuid "d4ecdff7-cd18-45ab-983e-5ed4d1fc8e5c")
-		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 222.25 22.1124 90)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left)
-			)
-		)
-	)
 	(global_label "LORA-BUSY"
 		(shape passive)
 		(at 148.59 109.22 0)
