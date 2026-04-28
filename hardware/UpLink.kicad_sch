@@ -1042,6 +1042,133 @@
 			)
 			(embedded_fonts no)
 		)
+		(symbol "Device:Antenna"
+			(pin_numbers
+				(hide yes)
+			)
+			(pin_names
+				(offset 1.016)
+				(hide yes)
+			)
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(in_pos_files yes)
+			(duplicate_pin_numbers_are_jumpers no)
+			(property "Reference" "AE"
+				(at -1.905 1.905 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(justify right)
+				)
+			)
+			(property "Value" "Antenna"
+				(at -1.905 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(justify right)
+				)
+			)
+			(property "Footprint" ""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Datasheet" ""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Description" "Antenna"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_keywords" "antenna"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(symbol "Antenna_0_1"
+				(polyline
+					(pts
+						(xy 0 2.54) (xy 0 -3.81)
+					)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy 1.27 2.54) (xy 0 -2.54) (xy -1.27 2.54)
+					)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+			)
+			(symbol "Antenna_1_1"
+				(pin input line
+					(at 0 -5.08 90)
+					(length 2.54)
+					(name "A"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
 		(symbol "Device:Battery"
 			(pin_numbers
 				(hide yes)
@@ -4564,6 +4691,42 @@
 		(color 0 0 0 0)
 		(uuid "fcc4821f-c79d-4d08-8624-8a416fa53a5d")
 	)
+	(no_connect
+		(at 50.8 132.08)
+		(uuid "16a4083e-ee5d-4c54-9716-47442cd8e3a5")
+	)
+	(no_connect
+		(at 68.58 160.02)
+		(uuid "3356f5ac-6382-45e3-848f-8ac62c607694")
+	)
+	(no_connect
+		(at 48.26 132.08)
+		(uuid "70a10fd4-d3bc-4259-bc81-68da9445723a")
+	)
+	(no_connect
+		(at 50.8 185.42)
+		(uuid "7227a0be-e870-4733-af28-d91cc374cafc")
+	)
+	(no_connect
+		(at 220.98 139.7)
+		(uuid "aff35096-8d34-4fbe-bdaa-0423cbe10ad7")
+	)
+	(no_connect
+		(at 147.32 114.3)
+		(uuid "b2919788-01dd-4e3e-bfc7-7d947f18a9ca")
+	)
+	(no_connect
+		(at 71.12 55.88)
+		(uuid "e5d533a4-4b2c-4390-9c8e-071746c9d6f1")
+	)
+	(no_connect
+		(at 48.26 185.42)
+		(uuid "e7fd6e49-b637-4594-84a5-7e343c12590d")
+	)
+	(no_connect
+		(at 53.34 185.42)
+		(uuid "f7a8d738-172b-42a8-beb5-35767294207f")
+	)
 	(wire
 		(pts
 			(xy 31.75 160.02) (xy 31.75 162.56)
@@ -6919,6 +7082,17 @@
 				)
 			)
 		)
+		(property "Mouser Part" " 595-LMT87LPGM "
+			(at 198.12 146.05 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(pin "2"
 			(uuid "7acf2151-aaf6-44ca-a134-0d1f5d14b85d")
 		)
@@ -8499,6 +8673,17 @@
 				)
 			)
 		)
+		(property "Mouser Part" " MCP3204-CI/ST "
+			(at 236.22 134.62 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(pin "6"
 			(uuid "fb64257b-f1b8-4550-95e2-ab04bd0d053e")
 		)
@@ -9183,6 +9368,17 @@
 			)
 		)
 		(property "Description" "Male connector, single row"
+			(at 198.12 134.62 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Mouser Part" " 595-LMT87LPGM "
 			(at 198.12 134.62 0)
 			(hide yes)
 			(show_name no)
@@ -10297,6 +10493,96 @@
 			(project "UpLink"
 				(path "/0f89dc0c-c04a-4760-bb6f-6fc424eb9333"
 					(reference "U2")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:Antenna")
+		(at 92.71 158.75 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "a0cf7d74-22c8-4047-9899-a7c98f01049a")
+		(property "Reference" "AE1"
+			(at 95.25 158.1149 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "Antenna"
+			(at 95.25 160.6549 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" ""
+			(at 92.71 158.75 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 92.71 158.75 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Antenna"
+			(at 92.71 158.75 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Mouser Part" " 538-206764-0050 "
+			(at 92.71 158.75 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "01e254ac-48b0-4440-ba49-e369761753fb")
+		)
+		(instances
+			(project "UpLink"
+				(path "/0f89dc0c-c04a-4760-bb6f-6fc424eb9333"
+					(reference "AE1")
 					(unit 1)
 				)
 			)

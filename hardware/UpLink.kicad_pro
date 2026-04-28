@@ -660,7 +660,7 @@
       "include_excluded_from_bom": false,
       "name": "",
       "sort_asc": true,
-      "sort_field": "Reference"
+      "sort_field": "Footprint"
     },
     "bus_aliases": {},
     "connection_grid_size": 50.0,
@@ -711,7 +711,7 @@
         "uuid": "0f89dc0c-c04a-4760-bb6f-6fc424eb9333"
       }
     ],
-    "used_designators": "",
+    "used_designators": "AE1",
     "variants": []
   },
   "sheets": [
