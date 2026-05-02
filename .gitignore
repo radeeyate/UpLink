@@ -2,3 +2,4 @@
 *lck
 *.csv
 \#auto_saved_files#
+/software/telemetry-dashboard/public/data/
