@@ -2,22 +2,23 @@
 
 import { useEffect, useState } from 'react';
 import { 
-  LineChart, Line, ScatterChart, Scatter, XAxis, YAxis, 
+  LineChart, Line, XAxis, YAxis, 
   CartesianGrid, Tooltip, ResponsiveContainer, Legend 
 } from 'recharts';
 
-import dynamic from 'next/dynamic'; // Required to prevent Leaflet SSR crashes
+import dynamic from 'next/dynamic';
 import { formatTimestamp } from '../utils/dateUtils'; 
-
+import TelemetryStats from '@/components/telemetryStats';
 
 const DynamicMap = dynamic(() => import('../components/GpsMap'), { 
   ssr: false,
-  loading: () => <div className="h-full w-full animate-pulse bg-gray-200 rounded-lg flex items-center justify-center text-gray-400">Loading Map Engine...</div>
+  loading: () => <div className="h-full w-full animate-pulse bg-slate-900 rounded-lg flex items-center justify-center text-slate-500">Loading Map Engine...</div>
 });
 
 export default function Dashboard() {
   const [data, setData] = useState<any[]>([]);
   const [latestImage, setLatestImage] = useState<string | null>(null);
+  const [latestTimestamp, setLatestTimestamp] = useState<number | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -25,8 +26,11 @@ export default function Dashboard() {
       if (res.ok) {
         const jsonData = await res.json();
         setData(jsonData);
+        const validTimestamps = jsonData.filter((row: any) => row.timestamp);
+        if (validTimestamps.length > 0) {
+          setLatestTimestamp(validTimestamps[validTimestamps.length - 1].timestamp);
+        }
         
-        // Find the most recent image based on the last row in the CSV
         const validImages = jsonData.filter((row: any) => row.image_name);
         if (validImages.length > 0) {
           setLatestImage(validImages[validImages.length - 1].image_name);
@@ -37,83 +41,89 @@ export default function Dashboard() {
     fetchData();
   }, []);
 
-
   return (
-    <main className="p-8 min-h-screen bg-gray-50 text-gray-900 font-sans">
-      <h1 className="text-3xl font-bold mb-8 text-center">Telemetry Dashboard</h1>
+    <main className="p-8 min-h-screen bg-slate-950 text-slate-100 font-sans">
+      <h1 className="text-3xl font-bold mb-8 text-center text-white">Telemetry Dashboard</h1>
       
-
+      {latestTimestamp !== null && (
+        <TelemetryStats data={data} latestTimestamp={latestTimestamp} />
+      )}
+      
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-        
         {/* Latest Image Display */}
-        <div className="bg-white p-4 rounded-xl shadow-md flex flex-col items-center justify-center">
+        <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 shadow-xl flex flex-col items-center justify-center">
           <h2 className="text-xl font-semibold mb-4">Most Recent Transmission</h2>
           {latestImage ? (
             <img 
               src={`/data/images/${latestImage}`} 
               alt="Latest Telemetry" 
-              className="max-h-[400px] object-contain rounded-lg shadow-sm"
+              className="max-h-[400px] object-contain rounded-lg shadow-sm border border-slate-700"
             />
           ) : (
-            <p className="text-gray-500">No image available</p>
+            <p className="text-slate-500">No image available</p>
           )}
         </div>
 
-        {/*Interactive Leaflet Map Overlay */}
-        <div className="bg-white p-4 rounded-xl shadow-md min-w-0">
+        {/* Interactive Leaflet Map Overlay */}
+        <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 shadow-xl min-w-0">
           <h2 className="text-xl font-semibold mb-4">GPS Trajectory Map</h2>
-          <div className="h-[400px] w-full z-0 relative">
+          <div className="h-[400px] w-full z-0 relative rounded-lg overflow-hidden border border-slate-700">
             <DynamicMap data={data} />
           </div>
         </div>
-
       </div>
 
       {/* Telemetry Line Charts */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
-        
-        {/* Temperatures */}
         <ChartCard title="Temperatures (°C)" data={data}>
-          <Line type="monotone" dataKey="out_temp" stroke="#3b82f6" name="Outside" />
-          <Line type="monotone" dataKey="in_temp" stroke="#f59e0b" name="Inside" />
-          <Line type="monotone" dataKey="mcu_temp" stroke="#ef4444" name="MCU" />
+          <Line type="monotone" dataKey="out_temp" stroke="#3b82f6" name="Outside" dot={false} />
+          <Line type="monotone" dataKey="in_temp" stroke="#f59e0b" name="Inside" dot={false} />
+          <Line type="monotone" dataKey="mcu_temp" stroke="#ef4444" name="MCU" dot={false} />
         </ChartCard>
 
-        {/* Altitude */}
         <ChartCard title="Altitude" data={data}>
-          <Line type="monotone" dataKey="alt" stroke="#8b5cf6" name="Altitude" />
+          <Line type="monotone" dataKey="alt" stroke="#a855f7" name="Altitude" dot={false} />
         </ChartCard>
 
-        {/* RAM Usage */}
         <ChartCard title="RAM Usage (MB)" data={data}>
-          <Line type="monotone" dataKey="ram" stroke="#8b5cf6" name="RAM" />
+          <Line type="monotone" dataKey="ram" stroke="#22d3ee" name="RAM" dot={false} />
         </ChartCard>
 
-        {/* Battery Voltage */}
         <ChartCard title="Battery Voltage (V)" data={data}>
-          <Line type="monotone" dataKey="batt_v" stroke="#10b981" name="Voltage" />
+          <Line type="monotone" dataKey="batt_v" stroke="#10b981" name="Voltage" dot={false} />
         </ChartCard>
-
       </div>
     </main>
   );
 }
 
-// Reusable Chart Component Wrapper
 function ChartCard({ title, data, children }: { title: string, data: any[], children: React.ReactNode }) {
   return (
-    // Added min-w-0 to prevent CSS Grid flex-shrink collapses
-    <div className="bg-white p-4 rounded-xl shadow-md min-w-0"> 
-      <h2 className="text-lg font-semibold mb-4">{title}</h2>
+    <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 shadow-xl min-w-0"> 
+      <h2 className="text-lg font-semibold mb-4 text-slate-200">{title}</h2>
       <div className="h-48 w-full">
-        {/* Added minWidth={0} directly to the component */}
         <ResponsiveContainer width="100%" height="100%" minWidth={0}>
           <LineChart data={data}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="timestamp" tickFormatter={formatTimestamp} type="number" domain={['dataMin', 'dataMax']} tick={{ fontSize: 10}} />
-            <YAxis domain={['auto', 'auto']} />
-            <Tooltip />
-            <Legend />
+            {/* Grid lines set to a subtle slate color */}
+            <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+            <XAxis 
+              dataKey="timestamp" 
+              tickFormatter={formatTimestamp} 
+              type="number" 
+              domain={['dataMin', 'dataMax']} 
+              tick={{ fontSize: 10, fill: '#94a3b8' }} 
+              stroke="#475569"
+            />
+            <YAxis 
+              domain={['auto', 'auto']} 
+              tick={{ fontSize: 10, fill: '#94a3b8' }} 
+              stroke="#475569"
+            />
+            <Tooltip 
+              contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155', color: '#f1f5f9' }}
+              itemStyle={{ fontSize: '12px' }}
+            />
+            <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
             {children}
           </LineChart>
         </ResponsiveContainer>
@@ -121,4 +131,3 @@ function ChartCard({ title, data, children }: { title: string, data: any[], chil
     </div>
   );
 }
-
