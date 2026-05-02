@@ -76,6 +76,10 @@ export default function Dashboard() {
           <Line type="monotone" dataKey="mcu_temp" stroke="#ef4444" name="MCU" />
         </ChartCard>
 
+        {/* Altitude */}
+        <ChartCard title="Altitude" data={data}>
+          <Line type="monotone" dataKey="alt" stroke="#8b5cf6" name="Altitude" />
+        </ChartCard>
 
         {/* RAM Usage */}
         <ChartCard title="RAM Usage (MB)" data={data}>
@@ -103,7 +107,7 @@ function ChartCard({ title, data, children }: { title: string, data: any[], chil
         <ResponsiveContainer width="100%" height="100%" minWidth={0}>
           <LineChart data={data}>
             <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="timestamp" tick={false} />
+            <XAxis dataKey="timestamp" tickFormatter={formatTimestamp} type="number" domain={['dataMin', 'dataMax']} tick={{ fontSize: 10}} />
             <YAxis domain={['auto', 'auto']} />
             <Tooltip />
             <Legend />
@@ -114,3 +118,14 @@ function ChartCard({ title, data, children }: { title: string, data: any[], chil
     </div>
   );
 }
+
+const formatTimestamp = (unixTime: number) => {
+  if (!unixTime) return "";
+  // Multiply by 1000 if your CSV uses seconds; omit if it uses milliseconds
+  const date = new Date(unixTime * 1000); 
+  return date.toLocaleTimeString([], { 
+    hour: '2-digit', 
+    minute: '2-digit', 
+    second: '2-digit' 
+  });
+};
