@@ -2,6 +2,8 @@
 
 import { MapContainer, TileLayer, Polyline, CircleMarker, Tooltip } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
+import { time, timeEnd } from 'console';
+import { formatTimestamp } from '../utils/dateUtils'; 
 
 export default function GpsMap({ data }: { data: any[] }) {
   // Filter for valid GPS data
@@ -10,7 +12,7 @@ export default function GpsMap({ data }: { data: any[] }) {
   if (!validData.length) {
     return (
       <div className="flex h-full items-center justify-center bg-gray-900 rounded-lg text-gray-400">
-        Waiting for GPS lock...
+        Waiting for GPS
       </div>
     );
   }
@@ -18,6 +20,9 @@ export default function GpsMap({ data }: { data: any[] }) {
   // Create the coordinate array for the path line
   const positions: [number, number][] = validData.map(p => [p.lat, p.lng]);
   const latestPos = positions[positions.length - 1];
+  const timestamps = validData.map(t => t.timestamp);
+  const latestTimestamp = timestamps[timestamps.length -1]
+  
 
   return (
     <div className="h-full w-full relative z-0">
@@ -65,6 +70,7 @@ export default function GpsMap({ data }: { data: any[] }) {
         >
           <Tooltip direction="top" offset={[0, -10]} opacity={1} permanent>
             Latest: {latestPos[0].toFixed(4)}, {latestPos[1].toFixed(4)}
+            Time: {formatTimestamp(latestTimestamp)}
           </Tooltip>
         </CircleMarker>
       </MapContainer>

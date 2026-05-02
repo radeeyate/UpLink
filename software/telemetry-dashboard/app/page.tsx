@@ -7,6 +7,8 @@ import {
 } from 'recharts';
 
 import dynamic from 'next/dynamic'; // Required to prevent Leaflet SSR crashes
+import { formatTimestamp } from '../utils/dateUtils'; 
+
 
 const DynamicMap = dynamic(() => import('../components/GpsMap'), { 
   ssr: false,
@@ -39,6 +41,7 @@ export default function Dashboard() {
   return (
     <main className="p-8 min-h-screen bg-gray-50 text-gray-900 font-sans">
       <h1 className="text-3xl font-bold mb-8 text-center">Telemetry Dashboard</h1>
+      
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
         
@@ -119,13 +122,3 @@ function ChartCard({ title, data, children }: { title: string, data: any[], chil
   );
 }
 
-const formatTimestamp = (unixTime: number) => {
-  if (!unixTime) return "";
-  // Multiply by 1000 if your CSV uses seconds; omit if it uses milliseconds
-  const date = new Date(unixTime * 1000); 
-  return date.toLocaleTimeString([], { 
-    hour: '2-digit', 
-    minute: '2-digit', 
-    second: '2-digit' 
-  });
-};
