@@ -3,3 +3,11 @@
 *.csv
 \#auto_saved_files#
 /software/telemetry-dashboard/public/data/
+*gerber*
+*.pdf
+*.zip
+*.html
+*.dsn
+*.ses
+ssdv_decode
+image.jpg
