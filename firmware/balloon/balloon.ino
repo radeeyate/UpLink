@@ -3,6 +3,7 @@
 #include "SD.h"
 #include "SPI.h"
 #include "ssdv.h"
+#include <cmath>
 
 #define CAMERA_MODEL_XIAO_ESP32S3
 
@@ -10,6 +11,20 @@
 
 bool camera_sign = false;
 bool sd_sign = false;
+
+// 28 bytes
+struct __attribute__((packed)) DataPacket {
+  int32_t lat;
+  int32_t lon;
+  uint32_t altitude; // meters
+  int32_t timestamp;
+  uint8_t satelliteFixes;
+  int16_t mcuTemp;
+  int16_t insideTemp;
+  int16_t outsideTemp;
+  uint32_t mcuFreeMem;
+  uint8_t batteryVoltage;
+};
 
 void photo_save(const char * fileName) {
     sensor_t * s = esp_camera_sensor_get();
@@ -55,7 +70,7 @@ void photo_save(const char * fileName) {
     }
 
     ssdv_t ssdv;
-    uint8_t packet[220];
+    uint8_t packet[256];
     uint8_t image_id = 1;
 
     if (ssdv_enc_init(&ssdv, SSDV_TYPE_NOFEC, image_id, 3, 220) != SSDV_OK) {
@@ -76,7 +91,22 @@ void photo_save(const char * fileName) {
       ssdv_dec_header(&info, packet);
       snprintf(packetName, sizeof(packetName), "/%02X_%05u.ssdv", info.image_id, info.packet_id);
 
-      writeFile(SD, packetName, packet, 220);
+      DataPacket telem = {
+        (int32_t)round(46.6920541*1000000), // lat
+        (int32_t)round(-112.0627135*1000000), // lon
+        (uint32_t)round(10000), // altitude
+        1234, // timestamp
+        20, // satellite fixes
+        12, // mcu temp; TODO: fetch
+        (int16_t)round(-20.54*100), // inside temp
+        (int16_t)round(-40.54*100), // outside temp
+        (uint32_t)ESP.getFreePsram(), // free memory
+        (uint8_t)round(4.5*10) // battery voltage
+      };
+
+      memcpy(packet + 220, &telem, sizeof(telem));
+
+      writeFile(SD, packetName, packet, 220 + sizeof(telem));
       Serial.printf("Saving: %s\n", packetName);
 
       ssdv_enc_set_buffer(&ssdv, packet);
