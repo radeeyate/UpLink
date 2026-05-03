@@ -70,7 +70,7 @@ void photo_save(const char * fileName) {
     }
 
     ssdv_t ssdv;
-    uint8_t packet[256];
+    uint8_t packet[SSDV_PKT_SIZE + 28];
     uint8_t image_id = 1;
 
     if (ssdv_enc_init(&ssdv, SSDV_TYPE_NOFEC, image_id, 3, 220) != SSDV_OK) {

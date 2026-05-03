@@ -7,7 +7,7 @@
 #include "../ssdv.h"
 
 #define MAX_PACKETS 1000
-#define PACKET_SIZE 220
+#define PACKET_SIZE (220)
 
 typedef struct {
     uint16_t id;
@@ -74,6 +74,16 @@ int main(int argc, char *argv[]) {
     ssdv_dec_set_buffer(&ssdv, out_buf, out_size);
 
     for (int i = 0; i < packet_count; i++) {
+        int errors = 0;
+        int res = ssdv_dec_is_packet(packets[i].data, PACKET_SIZE, &errors);
+        
+        if (res < 0) {
+            fprintf(stderr, "Warning: Packet %d failed FEC/Sanity check (uncorrectable)\n", packets[i].id);
+        } else if (errors > 0) {
+            printf("Fixed %d errors in packet %d\n", errors, packets[i].id);
+        }
+
+        // Feed it anyway for best-effort decoding
         ssdv_dec_feed(&ssdv, packets[i].data);
     }
 

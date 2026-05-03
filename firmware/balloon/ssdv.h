@@ -35,7 +35,7 @@ extern "C" {
 #define SSDV_PKT_SIZE         (220)
 #define SSDV_PKT_SIZE_HEADER  (0x0B)
 #define SSDV_PKT_SIZE_CRC     (0)
-#define SSDV_PKT_SIZE_RSCODES (0)
+#define SSDV_PKT_SIZE_RSCODES (16)
 
 #define TBL_LEN (546) /* Maximum size of the DQT and DHT tables */
 #define HBUFF_LEN (16) /* Extra space for reading marker data */

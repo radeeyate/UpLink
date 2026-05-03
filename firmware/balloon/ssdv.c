@@ -1044,7 +1044,7 @@ char ssdv_enc_get_packet(ssdv_t *s)
 				/* Generate the RS codes */
 				if(s->type == SSDV_TYPE_NORMAL && SSDV_PKT_SIZE_RSCODES > 0)
 				{
-					encode_rs_8(&s->out[1], &s->out[i], SSDV_PKT_SIZE - s->pkt_size);
+					encode_rs_8(&s->out[1], &s->out[i], 255 - (s->pkt_size - 1));
 				}
 				
 				s->packet_id++;
@@ -1395,27 +1395,15 @@ char ssdv_dec_is_packet(uint8_t *packet, int pkt_size, int *errors)
 		
 		type = SSDV_TYPE_NOFEC;
 	}
-	else if(pkt[1] == 0x66 + SSDV_TYPE_NORMAL)
+	else if(pkt[1] == 0x66 + SSDV_TYPE_NORMAL || (SSDV_PKT_SIZE_RSCODES > 0))
 	{
 		/* Test for a valid NORMAL packet */
 		pkt_size_payload = pkt_size - SSDV_PKT_SIZE_HEADER - SSDV_PKT_SIZE_CRC - SSDV_PKT_SIZE_RSCODES;
 		pkt_size_crcdata = SSDV_PKT_SIZE_HEADER + pkt_size_payload - 1;
 		
-		/* No FEC scan */
-		if(errors) *errors = 0;
-		
-		type = SSDV_TYPE_NORMAL;
-	}
-	
-	if(type == SSDV_TYPE_INVALID && SSDV_PKT_SIZE_RSCODES > 0)
-	{
-		/* Test for a valid NORMAL packet with correctable errors */
-		pkt_size_payload = pkt_size - SSDV_PKT_SIZE_HEADER - SSDV_PKT_SIZE_CRC - SSDV_PKT_SIZE_RSCODES;
-		pkt_size_crcdata = SSDV_PKT_SIZE_HEADER + pkt_size_payload - 1;
-		
 		/* Run the reed-solomon decoder */
 		pkt[1] = 0x66 + SSDV_TYPE_NORMAL;
-		i = decode_rs_8(&pkt[1], 0, 0, SSDV_PKT_SIZE - pkt_size);
+		i = decode_rs_8(&pkt[1], NULL, 0, 255 - (pkt_size - 1));
 		
 		if(i < 0) return(-1); /* Reed-solomon decoder failed */
 		if(errors) *errors = i;

@@ -11,3 +11,5 @@
 *.ses
 ssdv_decode
 image.jpg
+*env*
+*.ssdv
