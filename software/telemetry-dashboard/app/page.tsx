@@ -9,6 +9,7 @@ import {
 import dynamic from 'next/dynamic';
 import { formatTimestamp } from '../utils/dateUtils'; 
 import TelemetryStats from '@/components/telemetryStats';
+import PlotlyTemperature from '@/components/PlotlyTemperature';
 
 const DynamicMap = dynamic(() => import('../components/GpsMap'), { 
   ssr: false,
@@ -17,36 +18,63 @@ const DynamicMap = dynamic(() => import('../components/GpsMap'), {
 
 export default function Dashboard() {
   const [data, setData] = useState<any[]>([]);
-  const [latestImage, setLatestImage] = useState<string | null>(null);
-  const [latestTimestamp, setLatestTimestamp] = useState<number | null>(null);
+  const [scrubIndex, setScrubIndex] = useState<number | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
-      const res = await fetch('/api/telemetry');
-      if (res.ok) {
-        const jsonData = await res.json();
-        setData(jsonData);
-        const validTimestamps = jsonData.filter((row: any) => row.timestamp);
-        if (validTimestamps.length > 0) {
-          setLatestTimestamp(validTimestamps[validTimestamps.length - 1].timestamp);
+      try {
+        const res = await fetch('/api/telemetry', { cache: 'no-store' });
+        if (res.ok) {
+          const jsonData = await res.json();
+          setData(jsonData);
         }
-        
-        const validImages = jsonData.filter((row: any) => row.image_name);
-        if (validImages.length > 0) {
-          setLatestImage(validImages[validImages.length - 1].image_name);
-        }
+      } catch (error) {
+        console.error('Failed to fetch telemetry data:', error);
       }
     };
 
     fetchData();
+    const interval = setInterval(fetchData, 1000);
+
+    return () => clearInterval(interval);
   }, []);
+
+  const activeData = scrubIndex !== null && data.length > 0 ? data.slice(0, scrubIndex + 1) : data;
+  
+  const validTimestamps = activeData.filter((row: any) => row.timestamp);
+  const latestTimestamp = validTimestamps.length > 0 ? validTimestamps[validTimestamps.length - 1].timestamp : null;
+
+  const validImages = activeData.filter((row: any) => row.image_name);
+  const latestImage = validImages.length > 0 ? validImages[validImages.length - 1].image_name : null;
 
   return (
     <main className="p-8 min-h-screen bg-slate-950 text-slate-100 font-sans">
-      <h1 className="text-3xl font-bold mb-8 text-center text-white">Telemetry Dashboard</h1>
+      <h1 className="text-3xl font-bold mb-6 text-center text-white">Telemetry Dashboard</h1>
+      
+      {data.length > 0 && (
+        <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 shadow-xl mb-8 flex items-center gap-4">
+          <button 
+             onClick={() => setScrubIndex(null)}
+             className={`px-4 py-2 rounded text-sm font-semibold transition-colors ${scrubIndex === null ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}
+          >
+            Live
+          </button>
+          <input 
+            type="range" 
+            min="0" 
+            max={data.length - 1} 
+            value={scrubIndex !== null ? scrubIndex : data.length - 1}
+            onChange={(e) => setScrubIndex(parseInt(e.target.value))}
+            className="flex-1 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+          />
+          <div className="text-slate-300 min-w-[120px] text-right font-mono text-sm bg-slate-950 py-2 px-3 rounded border border-slate-800">
+            {formatTimestamp(latestTimestamp)}
+          </div>
+        </div>
+      )}
       
       {latestTimestamp !== null && (
-        <TelemetryStats data={data} latestTimestamp={latestTimestamp} />
+        <TelemetryStats data={activeData} latestTimestamp={latestTimestamp} isLive={scrubIndex === null} />
       )}
       
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
@@ -68,28 +96,24 @@ export default function Dashboard() {
         <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 shadow-xl min-w-0">
           <h2 className="text-xl font-semibold mb-4">GPS Trajectory Map</h2>
           <div className="h-[400px] w-full z-0 relative rounded-lg overflow-hidden border border-slate-700">
-            <DynamicMap data={data} />
+            <DynamicMap data={activeData} />
           </div>
         </div>
       </div>
 
       {/* Telemetry Line Charts */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
-        <ChartCard title="Temperatures (°C)" data={data}>
-          <Line type="monotone" dataKey="out_temp" stroke="#3b82f6" name="Outside" dot={false} />
-          <Line type="monotone" dataKey="in_temp" stroke="#f59e0b" name="Inside" dot={false} />
-          <Line type="monotone" dataKey="mcu_temp" stroke="#ef4444" name="MCU" dot={false} />
-        </ChartCard>
+        <PlotlyTemperature data={activeData} />
 
-        <ChartCard title="Altitude" data={data}>
+        <ChartCard title="Altitude" data={activeData}>
           <Line type="monotone" dataKey="alt" stroke="#a855f7" name="Altitude" dot={false} />
         </ChartCard>
 
-        <ChartCard title="RAM Usage (MB)" data={data}>
+        <ChartCard title="RAM Usage (MB)" data={activeData}>
           <Line type="monotone" dataKey="ram" stroke="#22d3ee" name="RAM" dot={false} />
         </ChartCard>
 
-        <ChartCard title="Battery Voltage (V)" data={data}>
+        <ChartCard title="Battery Voltage (V)" data={activeData}>
           <Line type="monotone" dataKey="batt_v" stroke="#10b981" name="Voltage" dot={false} />
         </ChartCard>
       </div>

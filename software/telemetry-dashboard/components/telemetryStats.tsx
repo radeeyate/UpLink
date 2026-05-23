@@ -2,48 +2,54 @@
 
 import { useState, useEffect, useMemo } from "react";
 
-export default function TelemetryStats({ data, latestTimestamp }: { data: any[], latestTimestamp: number }) {
-  // We can destructure it cleanly with a blank comma since we don't need to read 'tick' directly
+export default function TelemetryStats({ data, latestTimestamp, isLive = true }: { data: any[], latestTimestamp: number, isLive?: boolean }) {
   const [, setTick] = useState(0);
+  const [localTimeAtLastPacket, setLocalTimeAtLastPacket] = useState<number>(Date.now());
+  const [lastLatestTimestamp, setLastLatestTimestamp] = useState<number>(latestTimestamp);
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setTick(t => t + 1);
+      if (isLive) setTick(t => t + 1);
     }, 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [isLive]);
 
-  // 2. Memoize the T-0 (First packet)
-  // FIX: Depend safely on the first element's timestamp, not a boolean evaluation.
+  useEffect(() => {
+    if (latestTimestamp !== lastLatestTimestamp) {
+      setLocalTimeAtLastPacket(Date.now());
+      setLastLatestTimestamp(latestTimestamp);
+    }
+  }, [latestTimestamp, lastLatestTimestamp]);
+
   const firstTimestamp = useMemo(() => {
     return data.length > 0 ? data[0].timestamp : null;
   }, [data[0]?.timestamp]); 
 
   if (!data.length || firstTimestamp === null) return null;
 
-  // 3. Current Data Point (Safe fallback)
   const current = data.find(d => d.timestamp === latestTimestamp) || data[data.length - 1];
 
-  // 4. LIVE T-PLUS CALCULATION
-  // FIX: Handle both seconds and milliseconds seamlessly.
-  // If the timestamp is less than ~20 billion, it's in seconds. Otherwise, it's in milliseconds.
-  const isSeconds = firstTimestamp < 20000000000; 
-  const firstTimestampMs = isSeconds ? firstTimestamp * 1000 : firstTimestamp;
-
-  // Subtract in milliseconds first, then convert the total difference to seconds
-  const tPlusTotalSeconds = Math.max(0, Math.floor((Date.now() - firstTimestampMs) / 1000));
+  const isSeconds = firstTimestamp < 20000000000;
+  const firstTimeSec = isSeconds ? firstTimestamp : Math.floor(firstTimestamp / 1000);
+  const latestTimeSec = isSeconds ? latestTimestamp : Math.floor(latestTimestamp / 1000);
   
-  const m = Math.floor(tPlusTotalSeconds / 60);
+  const flightDurationSeconds = Math.max(0, latestTimeSec - firstTimeSec);
+  const timeSinceLastPacketSeconds = isLive ? Math.floor((Date.now() - localTimeAtLastPacket) / 1000) : 0;
+  const tPlusTotalSeconds = flightDurationSeconds + timeSinceLastPacketSeconds;
+  
+  const h = Math.floor(tPlusTotalSeconds / 3600);
+  const m = Math.floor((tPlusTotalSeconds % 3600) / 60);
   const s = Math.floor(tPlusTotalSeconds % 60);
 
-  // 5. ELEVATION RATE
   const getElevationRate = () => {
     if (data.length < 2) return 0;
     const curr = data[data.length - 1];
     const prev = data[Math.max(0, data.length - 5)];
     
     const dAlt = curr.alt - prev.alt;
-    const dTime = curr.timestamp - prev.timestamp;
+    const currTimeSec = curr.timestamp < 20000000000 ? curr.timestamp : curr.timestamp / 1000;
+    const prevTimeSec = prev.timestamp < 20000000000 ? prev.timestamp : prev.timestamp / 1000;
+    const dTime = currTimeSec - prevTimeSec;
     
     return dTime > 0 ? dAlt / dTime : 0;
   };
@@ -56,7 +62,7 @@ export default function TelemetryStats({ data, latestTimestamp }: { data: any[],
       <div className="bg-gray-900 p-4 border-l-4 border-blue-500">
         <p className="text-gray-500 text-xs font-bold uppercase">Elevation Rate</p>
         <p className="text-2xl font-mono text-purple-400">
-          {elevationRate >= 0 ? "+" : ""}{elevationRate.toFixed(2)} {/* Note: If dTime is in ms, this will output m/ms instead of m/s */}
+          {elevationRate >= 0 ? "+" : ""}{elevationRate.toFixed(2)} m/s
         </p>
       </div>
 
@@ -68,9 +74,9 @@ export default function TelemetryStats({ data, latestTimestamp }: { data: any[],
 
       {/* Live T-Plus */}
       <div className="bg-gray-900 p-4 border-l-4 border-purple-500">
-        <p className="text-gray-500 text-xs font-bold uppercase">T-Plus (Live)</p>
+        <p className="text-gray-500 text-xs font-bold uppercase">{isLive ? 'T-Plus (Live)' : 'T-Plus (Playback)'}</p>
         <p className="text-2xl font-mono text-purple-400">
-          {m}m {s.toString().padStart(2, '0')}s
+          {h > 0 ? `${h}h ` : ''}{m}m {s.toString().padStart(2, '0')}s
         </p>
       </div>
     </div>

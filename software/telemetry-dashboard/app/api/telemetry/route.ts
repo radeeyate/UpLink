@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { parse } from 'csv-parse/sync';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   try {
     // Bun's native file API is much cleaner and faster than Node's fs

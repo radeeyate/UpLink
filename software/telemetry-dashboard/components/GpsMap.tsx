@@ -1,9 +1,26 @@
 "use client";
 
-import { MapContainer, TileLayer, Polyline, CircleMarker, Tooltip } from 'react-leaflet';
+import { MapContainer, TileLayer, Polyline, CircleMarker, Tooltip, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
-import { time, timeEnd } from 'console';
 import { formatTimestamp } from '../utils/dateUtils'; 
+
+function RecenterButton({ center }: { center: [number, number] }) {
+  const map = useMap();
+  return (
+    <div style={{ position: 'absolute', top: '10px', right: '10px', zIndex: 1000 }}>
+      <button 
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          map.flyTo(center, Math.max(map.getZoom(), 15));
+        }}
+        className="bg-blue-600 hover:bg-blue-500 text-white font-semibold py-1.5 px-3 rounded shadow-lg border border-blue-700 transition-colors pointer-events-auto"
+      >
+        Go to Last Point
+      </button>
+    </div>
+  );
+}
 
 export default function GpsMap({ data }: { data: any[] }) {
   // Filter for valid GPS data
@@ -32,6 +49,7 @@ export default function GpsMap({ data }: { data: any[] }) {
         scrollWheelZoom={true} 
         style={{ height: '100%', width: '100%', borderRadius: '0.75rem' }}
       >
+        <RecenterButton center={latestPos} />
         {/* SATELLITE VIEW: Using ESRI World Imagery */}
         <TileLayer
           attribution='Offline Maps'
