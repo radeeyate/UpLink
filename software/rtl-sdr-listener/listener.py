@@ -54,7 +54,7 @@ while True:
             message_counter += 1
             print(f"[+] Saved pristine SSDV packet {message_counter} ({len(ssdv_data)} bytes)")
             
-            os.system("../../firmware/balloon/tools/ssdv_decode ./ image2.jpg")
+            os.system("../../firmware/balloon/tools/ssdv_decode ./ image")
             
     except Exception as e:
         print(f"Error processing packet: {e}")
