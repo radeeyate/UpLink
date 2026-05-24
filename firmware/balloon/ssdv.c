@@ -875,7 +875,7 @@ static char ssdv_have_marker_data(ssdv_t *s)
 	return(SSDV_OK);
 }
 
-char ssdv_enc_init(ssdv_t *s, uint8_t type, uint8_t image_id, int8_t quality, int pkt_size)
+char ssdv_enc_init(ssdv_t *s, uint8_t type, uint16_t image_id, int8_t quality, int pkt_size)
 {
 	/* Limit the quality level */
 	if(quality < 0) quality = 0;
@@ -1023,18 +1023,19 @@ char ssdv_enc_get_packet(ssdv_t *s)
 				/* A packet is ready, create the headers */
 				s->out[0]   = 0x55;                /* Sync */
 				s->out[1]   = 0x66 + s->type;      /* Type */
-				s->out[2]   = s->image_id;         /* Image ID */
-				s->out[3]   = s->packet_id >> 8;   /* Packet ID MSB */
-				s->out[4]   = s->packet_id & 0xFF; /* Packet ID LSB */
-				s->out[5]   = s->width >> 4;       /* Width / 16 */
-				s->out[6]   = s->height >> 4;      /* Height / 16 */
-				s->out[7]   = 0x00;
-				s->out[7]  |= ((s->quality - 4) & 7) << 3;  /* Quality level */
-				s->out[7]  |= (r == SSDV_EOI ? 1 : 0) << 2; /* EOI flag (1 bit) */
-				s->out[7]  |= s->mcu_mode & 0x03;  /* MCU mode (2 bits) */
-				s->out[8]   = mcu_offset;          /* Next MCU offset */
-				s->out[9]   = mcu_id >> 8;         /* MCU ID MSB */
-				s->out[10]  = mcu_id & 0xFF;       /* MCU ID LSB */
+				s->out[2]   = s->image_id >> 8;    /* Image ID MSB */
+				s->out[3]   = s->image_id & 0xFF;  /* Image ID LSB */
+				s->out[4]   = s->packet_id >> 8;   /* Packet ID MSB */
+				s->out[5]   = s->packet_id & 0xFF; /* Packet ID LSB */
+				s->out[6]   = s->width >> 4;       /* Width / 16 */
+				s->out[7]   = s->height >> 4;      /* Height / 16 */
+				s->out[8]   = 0x00;
+				s->out[8]  |= ((s->quality - 4) & 7) << 3;  /* Quality level */
+				s->out[8]  |= (r == SSDV_EOI ? 1 : 0) << 2; /* EOI flag (1 bit) */
+				s->out[8]  |= s->mcu_mode & 0x03;  /* MCU mode (2 bits) */
+				s->out[9]   = mcu_offset;          /* Next MCU offset */
+				s->out[10]  = mcu_id >> 8;         /* MCU ID MSB */
+				s->out[11]  = mcu_id & 0xFF;       /* MCU ID LSB */
 				
 				/* Fill any remaining bytes with noise */
 				if(s->out_len > 0) ssdv_memset_prng(s->outp, s->out_len);
@@ -1260,7 +1261,7 @@ char ssdv_dec_feed(ssdv_t *s, uint8_t *packet)
 		}
 		
 		/* Display information about the image */
-		fprintf(stderr, "Image ID: %02X\n", s->image_id);
+		fprintf(stderr, "Image ID: %u\n", s->image_id);
 		fprintf(stderr, "Resolution: %ix%i\n", s->width, s->height);
 		fprintf(stderr, "MCU blocks: %i\n", s->mcu_count);
 		fprintf(stderr, "Sampling factor: %s\n", factor);
@@ -1437,16 +1438,16 @@ char ssdv_dec_is_packet(uint8_t *packet, int pkt_size, int *errors)
 void ssdv_dec_header(ssdv_packet_info_t *info, uint8_t *packet)
 {
 	info->type       = packet[1] - 0x66;
-	info->image_id   = packet[2];
-	info->packet_id  = (packet[3] << 8) | packet[4];
-	info->width      = packet[5] << 4;
-	info->height     = packet[6] << 4;
-	info->eoi        = (packet[7] >> 2) & 1;
-	info->quality    = ((packet[7] >> 3) & 7) ^ 4;
-	info->mcu_mode   = packet[7] & 0x03;
-	info->mcu_offset = packet[8];
-	info->mcu_id     = (packet[9] << 8) | packet[10];
-	info->mcu_count  = packet[5] * packet[6];
+	info->image_id   = (packet[2] << 8) | packet[3];
+	info->packet_id  = (packet[4] << 8) | packet[5];
+	info->width      = packet[6] << 4;
+	info->height     = packet[7] << 4;
+	info->eoi        = (packet[8] >> 2) & 1;
+	info->quality    = ((packet[8] >> 3) & 7) ^ 4;
+	info->mcu_mode   = packet[8] & 0x03;
+	info->mcu_offset = packet[9];
+	info->mcu_id     = (packet[10] << 8) | packet[11];
+	info->mcu_count  = packet[6] * packet[7];
 	if(info->mcu_mode == 1 || info->mcu_mode == 2) info->mcu_count *= 2;
 	else if(info->mcu_mode == 3) info->mcu_count *= 4;
 }

@@ -33,7 +33,7 @@ extern "C" {
 
 /* Packet details */
 #define SSDV_PKT_SIZE         (220)
-#define SSDV_PKT_SIZE_HEADER  (0x0B)
+#define SSDV_PKT_SIZE_HEADER  (0x0C)
 #define SSDV_PKT_SIZE_CRC     (0)
 #define SSDV_PKT_SIZE_RSCODES (16)
 
@@ -58,7 +58,7 @@ typedef struct
 	/* Image information */
 	uint16_t width;
 	uint16_t height;
-	uint8_t  image_id;
+	uint16_t image_id;
 	uint16_t packet_id;
 	uint8_t  mcu_mode;  /* 0 = 2x2, 1 = 2x1, 2 = 1x2, 3 = 1x1           */
 	uint16_t mcu_id;
@@ -131,7 +131,7 @@ typedef struct
 
 typedef struct {
 	uint8_t  type;
-	uint8_t  image_id;
+	uint16_t image_id;
 	uint16_t packet_id;
 	uint16_t width;
 	uint16_t height;
@@ -144,7 +144,7 @@ typedef struct {
 } ssdv_packet_info_t;
 
 /* Encoding */
-extern char ssdv_enc_init(ssdv_t *s, uint8_t type, uint8_t image_id, int8_t quality, int pkt_size);
+extern char ssdv_enc_init(ssdv_t *s, uint8_t type, uint16_t image_id, int8_t quality, int pkt_size);
 extern char ssdv_enc_set_buffer(ssdv_t *s, uint8_t *buffer);
 extern char ssdv_enc_get_packet(ssdv_t *s);
 extern char ssdv_enc_feed(ssdv_t *s, uint8_t *buffer, size_t length);
