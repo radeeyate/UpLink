@@ -15,7 +15,15 @@ export async function GET() {
       cast: true, // Automatically converts numbers
     });
 
-    const filtered = records.filter((record: any) => record.timestamp >= 0);
+    const cutoffTimestamp = Date.UTC(2026, 0, 1) / 1000;
+    const filtered = records.filter((record: any) => {
+      if (typeof record.timestamp !== 'number') {
+        return false;
+      }
+
+      const timestampInSeconds = record.timestamp > 20000000000 ? record.timestamp / 1000 : record.timestamp;
+      return timestampInSeconds >= cutoffTimestamp;
+    });
 
     return NextResponse.json(filtered);
   } catch (error) {

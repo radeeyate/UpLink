@@ -1,7 +1,6 @@
 "use client";
 
 import dynamic from 'next/dynamic';
-import { formatTimestamp } from '../utils/dateUtils';
 
 // Dynamically import Plotly since it requires the window object
 const Plot = dynamic(() => import('react-plotly.js'), { 
@@ -17,7 +16,6 @@ export default function PlotlyTemperature({ data }: { data: any[] }) {
   if (!data || data.length === 0) return null;
 
   const timestamps = data.map((d) => {
-    // Determine if it's seconds or ms and return formatted time
     const t = d.timestamp < 20000000000 ? d.timestamp : d.timestamp / 1000;
     return new Date(t * 1000);
   });
@@ -69,25 +67,25 @@ export default function PlotlyTemperature({ data }: { data: any[] }) {
             {
               x: timestamps,
               y: plaTemps,
-              type: 'scatter',
+              type: 'scattergl',
               mode: 'lines+markers',
               name: 'PLA Temp',
-              line: { color: '#ec4899', width: 2 }, // Pink
+              line: { color: '#ec4899', width: 2 }, 
               marker: { size: 4 }
             },
             {
               x: timestamps,
               y: foamPlaTemps,
-              type: 'scatter',
+              type: 'scattergl',
               mode: 'lines+markers',
               name: 'Foaming PLA Temp',
-              line: { color: '#8b5cf6', width: 2 }, // Purple
+              line: { color: '#8b5cf6', width: 2 }, 
               marker: { size: 4 }
             },
             {
               x: timestamps,
               y: outTemps,
-              type: 'scatter',
+              type: 'scattergl',
               mode: 'lines',
               name: 'Outside',
               line: { color: '#3b82f6', width: 1, dash: 'dot' }
@@ -95,7 +93,7 @@ export default function PlotlyTemperature({ data }: { data: any[] }) {
             {
               x: timestamps,
               y: mcuTemps,
-              type: 'scatter',
+              type: 'scattergl',
               mode: 'lines',
               name: 'MCU',
               line: { color: '#ef4444', width: 1, dash: 'dot' }

@@ -2,7 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 
-export default function TelemetryStats({ data, latestTimestamp, isLive = true }: { data: any[], latestTimestamp: number, isLive?: boolean }) {
+interface TelemetryStatsProps {
+  data: any[];
+  targetIndex: number;
+  isLive?: boolean;
+}
+
+export default function TelemetryStats({ data, targetIndex, isLive = true }: TelemetryStatsProps) {
   const [, setTick] = useState(0);
   const firstPacketTimestampRef = useRef<number | null>(null);
 
@@ -21,8 +27,10 @@ export default function TelemetryStats({ data, latestTimestamp, isLive = true }:
 
   if (!data.length || firstPacketTimestamp === null) return null;
 
-  const current = data.find(d => d.timestamp === latestTimestamp) || data[data.length - 1];
+  const current = data[targetIndex] || data[data.length - 1];
+  if (!current) return null;
 
+  const latestTimestamp = current.timestamp;
   const playbackDurationSeconds = Math.max(0, latestTimestamp - firstPacketTimestamp);
   const liveDurationSeconds = Math.max(0, Math.floor(Date.now() / 1000) - firstPacketTimestamp);
   const tPlusTotalSeconds = isLive ? liveDurationSeconds : playbackDurationSeconds;
@@ -42,7 +50,7 @@ export default function TelemetryStats({ data, latestTimestamp, isLive = true }:
 
       <div className="bg-gray-900 p-4 border-l-4 border-green-500">
         <p className="text-gray-500 text-xs font-bold uppercase">Altitude</p>
-        <p className="text-2xl font-mono text-purple-400">{current.alt.toFixed(1)} m</p>
+        <p className="text-2xl font-mono text-purple-400">{current.alt?.toFixed(1) ?? "0.0"} m</p>
       </div>
 
       <div className="bg-gray-900 p-4 border-l-4 border-purple-500">
@@ -54,7 +62,7 @@ export default function TelemetryStats({ data, latestTimestamp, isLive = true }:
 
       <div className="bg-gray-900 p-4 border-l-4 border-yellow-500">
         <p className="text-gray-500 text-xs font-bold uppercase">Satellites</p>
-        <p className="text-2xl font-mono text-purple-400">{current.satellite_fixes}</p>
+        <p className="text-2xl font-mono text-purple-400">{current.satellite_fixes ?? 0}</p>
       </div>
     </div>
   );

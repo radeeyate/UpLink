@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef, useMemo, useTransition } from 'react';
 import { 
   LineChart, Line, XAxis, YAxis, 
   CartesianGrid, Tooltip, ResponsiveContainer, Legend 
 } from 'recharts';
+import { useDebounce } from 'use-debounce';
 
 import dynamic from 'next/dynamic';
 import { formatTimestamp } from '../utils/dateUtils'; 
@@ -19,6 +20,11 @@ const DynamicMap = dynamic(() => import('../components/GpsMap'), {
 export default function Dashboard() {
   const [data, setData] = useState<any[]>([]);
   const [scrubIndex, setScrubIndex] = useState<number | null>(null);
+  
+  const sliderRef = useRef<HTMLInputElement>(null);
+
+  const [startTransition] = useTransition();
+  const [debouncedScrubIndex] = useDebounce(scrubIndex, 120);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -39,16 +45,58 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, []);
 
-  const activeData = scrubIndex !== null && data.length > 0 ? data.slice(0, scrubIndex + 1) : data;
-  
-  const validTimestamps = activeData.filter((row: any) => row.timestamp);
-  const latestTimestamp = validTimestamps.length > 0 ? validTimestamps[validTimestamps.length - 1].timestamp : null;
+  useEffect(() => {
+    if (scrubIndex === null && sliderRef.current && data.length > 0) {
+      sliderRef.current.value = String(data.length - 1);
+    }
+  }, [data.length, scrubIndex]);
 
-  const validImages = activeData.filter((row: any) => row.image_name);
-  const latestImage = validImages.length > 0 ? validImages[validImages.length - 1].image_name : null;
-  const latestImageSrc = latestImage
-    ? `/data/images/${latestImage}?t=${latestTimestamp ?? data.length}`
-    : null;
+  const targetIndex = scrubIndex !== null ? scrubIndex : data.length - 1;
+  const currentPacket = data.length > 0 ? data[targetIndex] : null;
+  const latestTimestamp = currentPacket?.timestamp || null;
+
+  let latestImageSrc = null;
+  if (data.length > 0) {
+    for (let i = targetIndex; i >= 0; i--) {
+      if (data[i]?.image_name) {
+        latestImageSrc = `/data/images/${data[i].image_name}?t=${latestTimestamp ?? data.length}`;
+        break;
+      }
+    }
+  }
+
+  const heavyActiveData = useMemo(() => {
+    return debouncedScrubIndex !== null && data.length > 0 
+      ? data.slice(0, debouncedScrubIndex + 1) 
+      : data;
+  }, [debouncedScrubIndex, data]);
+
+  const memoizedMap = useMemo(() => (
+    <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 shadow-xl min-w-0">
+      <h2 className="text-xl font-semibold mb-4">GPS Trajectory Map</h2>
+      <div className="h-[400px] w-full z-0 relative rounded-lg overflow-hidden border border-slate-700">
+        <DynamicMap data={heavyActiveData} />
+      </div>
+    </div>
+  ), [heavyActiveData]);
+
+  const memoizedCharts = useMemo(() => (
+    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+      <PlotlyTemperature data={heavyActiveData} />
+
+      <ChartCard title="Altitude" data={heavyActiveData}>
+        <Line type="monotone" dataKey="alt" stroke="#a855f7" name="Altitude" dot={false} isAnimationActive={false} />
+      </ChartCard>
+
+      <ChartCard title="RAM Usage (MB)" data={heavyActiveData}>
+        <Line type="monotone" dataKey="ram" stroke="#22d3ee" name="RAM" dot={false} isAnimationActive={false} />
+      </ChartCard>
+
+      <ChartCard title="Battery Voltage (V)" data={heavyActiveData}>
+        <Line type="monotone" dataKey="batt_v" stroke="#10b981" name="Voltage" dot={false} isAnimationActive={false} />
+      </ChartCard>
+    </div>
+  ), [heavyActiveData]);
 
   return (
     <main className="p-8 min-h-screen bg-slate-950 text-slate-100 font-sans">
@@ -57,81 +105,72 @@ export default function Dashboard() {
       {data.length > 0 && (
         <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 shadow-xl mb-8 flex items-center gap-4">
           <button 
-             onClick={() => setScrubIndex(null)}
+             onClick={() => {
+               setScrubIndex(null);
+               if (sliderRef.current) {
+                 sliderRef.current.value = String(data.length - 1);
+               }
+             }}
              className={`px-4 py-2 rounded text-sm font-semibold transition-colors ${scrubIndex === null ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}
           >
             Live
           </button>
+          
           <input 
+            ref={sliderRef}
             type="range" 
             min="0" 
             max={data.length - 1} 
-            value={scrubIndex !== null ? scrubIndex : data.length - 1}
-            onChange={(e) => setScrubIndex(parseInt(e.target.value))}
+            key={data.length > 0 ? "loaded" : "loading"}
+            defaultValue={data.length > 0 ? data.length - 1 : 0}
+            onChange={(e) => {
+              const val = parseInt(e.target.value);
+              startTransition(() => {
+                setScrubIndex(val);
+              });
+            }}
             className="flex-1 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
           />
+          
           <div className="text-slate-300 min-w-[120px] text-right font-mono text-sm bg-slate-950 py-2 px-3 rounded border border-slate-800">
             {formatTimestamp(latestTimestamp)}
           </div>
         </div>
       )}
       
-      {latestTimestamp !== null && (
-        <TelemetryStats data={activeData} latestTimestamp={latestTimestamp} isLive={scrubIndex === null} />
+      {latestTimestamp !== null && data.length > 0 && (
+        <TelemetryStats data={data} targetIndex={targetIndex} isLive={scrubIndex === null} />
       )}
       
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-        {/* Latest Image Display */}
         <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 shadow-xl flex flex-col items-center justify-center">
           <h2 className="text-xl font-semibold mb-4">Most Recent Transmission</h2>
           {latestImageSrc ? (
             <img 
               src={latestImageSrc} 
               alt="Latest Telemetry" 
-              className="max-h-[400px] object-contain rounded-lg shadow-sm border border-slate-700"
+              className="max-h-[520px] object-contain rounded-lg shadow-sm border border-slate-700"
             />
           ) : (
             <p className="text-slate-500">No image available</p>
           )}
         </div>
 
-        {/* Interactive Leaflet Map Overlay */}
-        <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 shadow-xl min-w-0">
-          <h2 className="text-xl font-semibold mb-4">GPS Trajectory Map</h2>
-          <div className="h-[400px] w-full z-0 relative rounded-lg overflow-hidden border border-slate-700">
-            <DynamicMap data={activeData} />
-          </div>
-        </div>
+        {memoizedMap}
       </div>
 
-      {/* Telemetry Line Charts */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
-        <PlotlyTemperature data={activeData} />
-
-        <ChartCard title="Altitude" data={activeData}>
-          <Line type="monotone" dataKey="alt" stroke="#a855f7" name="Altitude" dot={false} />
-        </ChartCard>
-
-        <ChartCard title="RAM Usage (MB)" data={activeData}>
-          <Line type="monotone" dataKey="ram" stroke="#22d3ee" name="RAM" dot={false} />
-        </ChartCard>
-
-        <ChartCard title="Battery Voltage (V)" data={activeData}>
-          <Line type="monotone" dataKey="batt_v" stroke="#10b981" name="Voltage" dot={false} />
-        </ChartCard>
-      </div>
+      {memoizedCharts}
     </main>
   );
 }
 
-function ChartCard({ title, data, children }: { title: string, data: any[], children: React.ReactNode }) {
+const ChartCard = React.memo(function ChartCard({ title, data, children }: { title: string, data: any[], children: React.ReactNode }) {
   return (
     <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 shadow-xl min-w-0"> 
       <h2 className="text-lg font-semibold mb-4 text-slate-200">{title}</h2>
       <div className="h-48 w-full">
         <ResponsiveContainer width="100%" height="100%" minWidth={0}>
           <LineChart data={data}>
-            {/* Grid lines set to a subtle slate color */}
             <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
             <XAxis 
               dataKey="timestamp" 
@@ -157,4 +196,4 @@ function ChartCard({ title, data, children }: { title: string, data: any[], chil
       </div>
     </div>
   );
-}
+});

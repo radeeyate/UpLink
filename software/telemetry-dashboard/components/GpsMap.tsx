@@ -38,8 +38,7 @@ export default function GpsMap({ data }: { data: any[] }) {
   const positions: [number, number][] = validData.map(p => [p.lat, p.lng]);
   const latestPos = positions[positions.length - 1];
   const timestamps = validData.map(t => t.timestamp);
-  const latestTimestamp = timestamps[timestamps.length -1]
-  
+  const latestTimestamp = timestamps[timestamps.length - 1];
 
   return (
     <div className="h-full w-full relative z-0">
@@ -56,25 +55,8 @@ export default function GpsMap({ data }: { data: any[] }) {
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
         
-        {/* The historical path line */}
         <Polyline positions={positions} color="#60a5fa" weight={3} opacity={0.6} />
-        
-        {/* PLOT ALL POSITIONS: Mapping every point to a small dot */}
-        {validData.map((point, idx) => (
-          <CircleMarker 
-            key={idx}
-            center={[point.lat, point.lng]} 
-            radius={3} 
-            pathOptions={{ 
-              color: '#ffffff', 
-              fillColor: '#3b82f6', 
-              fillOpacity: 0.8,
-              weight: 6 
-            }}
-          />
-        ))}
 
-        {/* Highlight the LATEST position with a larger pulse marker */}
         <CircleMarker 
           center={latestPos} 
           radius={8} 
