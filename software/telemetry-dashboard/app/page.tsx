@@ -46,6 +46,9 @@ export default function Dashboard() {
 
   const validImages = activeData.filter((row: any) => row.image_name);
   const latestImage = validImages.length > 0 ? validImages[validImages.length - 1].image_name : null;
+  const latestImageSrc = latestImage
+    ? `/data/images/${latestImage}?t=${latestTimestamp ?? data.length}`
+    : null;
 
   return (
     <main className="p-8 min-h-screen bg-slate-950 text-slate-100 font-sans">
@@ -81,9 +84,9 @@ export default function Dashboard() {
         {/* Latest Image Display */}
         <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 shadow-xl flex flex-col items-center justify-center">
           <h2 className="text-xl font-semibold mb-4">Most Recent Transmission</h2>
-          {latestImage ? (
+          {latestImageSrc ? (
             <img 
-              src={`/data/images/${latestImage}`} 
+              src={latestImageSrc} 
               alt="Latest Telemetry" 
               className="max-h-[400px] object-contain rounded-lg shadow-sm border border-slate-700"
             />
