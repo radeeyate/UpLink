@@ -15,7 +15,9 @@ export async function GET() {
       cast: true, // Automatically converts numbers
     });
 
-    return NextResponse.json(records);
+    const filtered = records.filter((record: any) => record.timestamp >= 0);
+
+    return NextResponse.json(filtered);
   } catch (error) {
     console.error("Failed to read CSV:", error);
     return NextResponse.json({ error: 'Failed to read telemetry data' }, { status: 500 });

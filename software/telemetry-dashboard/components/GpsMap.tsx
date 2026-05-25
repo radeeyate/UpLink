@@ -50,11 +50,10 @@ export default function GpsMap({ data }: { data: any[] }) {
         style={{ height: '100%', width: '100%', borderRadius: '0.75rem' }}
       >
         <RecenterButton center={latestPos} />
-        {/* SATELLITE VIEW: Using ESRI World Imagery */}
+        {/* Online Maps: OpenStreetMap */}
         <TileLayer
-          attribution='Offline Maps'
-          url="/data/tiles/{z}/{x}/{y}.jpg"
-          maxZoom={13}
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
         
         {/* The historical path line */}
@@ -87,8 +86,12 @@ export default function GpsMap({ data }: { data: any[] }) {
           }}
         >
           <Tooltip direction="top" offset={[0, -10]} opacity={1} permanent>
-            Latest: {latestPos[0].toFixed(4)}, {latestPos[1].toFixed(4)}
-            Time: {formatTimestamp(latestTimestamp)}
+            <div style={{ textAlign: 'center' }}>
+              <div>{latestPos[0].toFixed(4)}, {latestPos[1].toFixed(4)}</div>
+              <div>Time: {formatTimestamp(latestTimestamp)}</div>
+              <div>Satellites: {validData[validData.length - 1].satellite_fixes}</div>
+              <div>Climb Rate: {validData[validData.length - 1].climb_rate} m/s</div>
+            </div>
           </Tooltip>
         </CircleMarker>
       </MapContainer>
