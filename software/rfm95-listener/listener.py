@@ -10,8 +10,8 @@ import board
 import busio
 from digitalio import DigitalInOut
 
-TELEMETRY_FORMAT = "<iiIHhiBhhhhIB"
-TELEMETRY_SIZE = struct.calcsize(TELEMETRY_FORMAT)  # 34 bytes
+TELEMETRY_FORMAT = "<iiIHhiBhhhhIBB"
+TELEMETRY_SIZE = struct.calcsize(TELEMETRY_FORMAT)  # 35 bytes
 SSDV_PACKET_SIZE = 220  # 220 bytes
 
 CSV_FILENAME = "../telemetry-dashboard/.next/standalone/public/data/telemetry.csv"
@@ -31,6 +31,9 @@ CSV_HEADERS = [
     "out_temp",
     "ram",
     "batt_v",
+    "sd_card_ok",
+    "camera_ok",
+    "gps_fix_ok",
     "image_name",
 ]
 
@@ -82,6 +85,9 @@ def decode_telemetry(data):
         "out_temp": vals[10] / 100.0,
         "ram": vals[11],
         "batt_v": vals[12] / 10.0,
+        "sd_card_ok": bool(vals[13] & (1 << 0)),
+        "camera_ok": bool(vals[13] & (1 << 1)),
+        "gps_fix_ok": bool(vals[13] & (1 << 2)),
     }
 
 
@@ -103,6 +109,11 @@ def get_newest_image_name(directory="."):
     return newest
 
 
+def is_ssdv_packet(data):
+    """Check if data starts with the SSDV sync word (0x55 0x66 or 0x55 0x67)."""
+    return len(data) >= 2 and data[0] == 0x55 and data[1] in (0x66, 0x67)
+
+
 print("Starting Physical LoRa Receiver...")
 init_csv()
 message_counter = 0
@@ -115,37 +126,40 @@ while True:
         snr = rfm9x.snr if rfm9x.snr is not None else ""
 
         try:
-            ssdv_packet = packet[:SSDV_PACKET_SIZE]
-            telem_raw = packet[SSDV_PACKET_SIZE : SSDV_PACKET_SIZE + TELEMETRY_SIZE]
+            # Telemetry-only packet (no SSDV sync word)
+            if not is_ssdv_packet(packet):
+                telem_raw = packet[:TELEMETRY_SIZE]
+                telemetry = decode_telemetry(telem_raw)
+                if telemetry:
+                    newest_image = get_newest_image_name(".")
+                    telemetry["image_name"] = newest_image
+                    if newest_image:
+                        os.makedirs(IMAGE_DEST_DIR, exist_ok=True)
+                        try:
+                            shutil.copy(
+                                newest_image, os.path.join(IMAGE_DEST_DIR, newest_image)
+                            )
+                        except Exception as e:
+                            print(f"    ↳ Failed to copy image: {e}")
+                    save_to_csv(telemetry)
+                    print(
+                        f"[+] Telemetry: Lat={telemetry['lat']:.6f}, Lon={telemetry['lng']:.6f}, Alt={telemetry['alt']:.2f}m"
+                    )
+                continue
 
-            telemetry = decode_telemetry(telem_raw)
+            # SSDV packet
+            ssdv_packet = packet[:SSDV_PACKET_SIZE]
 
             filename = f"01_{message_counter:05}.ssdv"
             with open(filename, "wb") as f:
                 f.write(ssdv_packet)
 
             print(
-                f"[+] Saved pristine SSDV packet {message_counter} ({len(ssdv_packet)} bytes) | RSSI: {rssi} dB"
+                f"[+] Saved SSDV packet {message_counter} ({len(ssdv_packet)} bytes) | RSSI: {rssi} dB"
             )
             message_counter += 1
 
             os.system("../../firmware/balloon/tools/ssdv_decode ./ image")
-
-            if telemetry:
-                newest_image = get_newest_image_name(".")
-                telemetry["image_name"] = newest_image
-                if newest_image:
-                    os.makedirs(IMAGE_DEST_DIR, exist_ok=True)
-                    try:
-                        shutil.copy(
-                            newest_image, os.path.join(IMAGE_DEST_DIR, newest_image)
-                        )
-                    except Exception as e:
-                        print(f"    ↳ Failed to copy image: {e}")
-                save_to_csv(telemetry)
-                print(
-                    f"    ↳ Telemetry Processed: Lat={telemetry['lat']:.6f}, Lon={telemetry['lng']:.6f}, Alt={telemetry['alt']:.2f}m"
-                )
 
         except Exception as e:
             print(f"Error processing packet: {e}")

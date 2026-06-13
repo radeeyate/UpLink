@@ -136,7 +136,7 @@ void setup() {
 
   Serial.begin(115200);
   while (!Serial) {
-    if (millis() > 10000) {
+    if (millis() > 5000) {
       break;
     }
   };
@@ -178,6 +178,9 @@ void setup() {
   } else {
     Serial.println(F("Successfully enabled flight mode"));
   }
+  // having a faster freq (1 -> 5) makes the wait times between packets
+  // much faster, no need to wait 200-800ms for GNSS update.
+  gnss.setNavigationFrequency(5);
   gnss.saveConfigSelective(VAL_CFG_SUBSEC_IOPORT | VAL_CFG_SUBSEC_NAVCONF);
 
   Serial.println(F("[LORA] Initialising ... "));
@@ -362,11 +365,14 @@ void loop() {
     Serial.println("Warning: FB does not start with JPEG SOI");
   }
 
+  int ssdv_pkt_count = 0;
+
   while (ssdv_enc_get_packet(&ssdv) == SSDV_HAVE_PACKET) {
     esp_task_wdt_reset();
 
     gnss.checkUblox();
-    
+    bool isFixOK = gnss.getGnssFixOk();
+    uint8_t SIV = gnss.getSIV();
     long rawLatitude = gnss.getLatitude();
     long rawLongitude = gnss.getLongitude();
     long rawAltitude = gnss.getAltitude();
@@ -374,7 +380,6 @@ void loop() {
     long velocityDown = gnss.getNedDownVel();
     long timestamp = gnss.getUnixEpoch();
     float mcuTemp = temperatureRead();
-    uint8_t SIV = gnss.getSIV();
 
     // 2.5 here is the ADC voltage reference
     float batteryDividedVoltage = (adc.read(2) * 2.5) / 4095.0;
@@ -383,7 +388,7 @@ void loop() {
 
     DataPacket telem;
 
-    if (SIV >= 4 && gnss.getGnssFixOk()) {
+    if (SIV >= 4 && isFixOK) {
       double altitudeMeters = rawAltitude / 1000.0;
       uint16_t speed = rawSpeed / 100;
       int16_t climbRate = (int16_t)((velocityDown * -1) / 100);
@@ -417,8 +422,8 @@ void loop() {
     telem.batteryVoltage = batteryVoltage;
 
     telem.sysFlags = 0;
-    if (!sdCardError) telem.sysFlags |= (1 << SD_CARD_FLAG); // 1 means it is functioning, 0 is not
-    if (!cameraError) telem.sysFlags |= (1 << CAMERA_FLAG); // 1 means it is functioning, 0 is not
+    if (!sdCardError) telem.sysFlags |= (1 << SD_CARD_FLAG);  // 1 means it is functioning, 0 is not
+    if (!cameraError) telem.sysFlags |= (1 << CAMERA_FLAG);   // 1 means it is functioning, 0 is not
     if (gnss.getGnssFixOk()) telem.sysFlags |= (1 << GPS_FIX_FLAG);
     // isDescending?
     // landingDetected?
@@ -434,9 +439,9 @@ void loop() {
                      timestamp,
                      SIV,
                      temperatureRead(),
-                     getTemperature(0)/100.0,
-                     getTemperature(3)/100.0,
-                     getTemperature(1)/100.0,
+                     getTemperature(0) / 100.0,
+                     getTemperature(3) / 100.0,
+                     getTemperature(1) / 100.0,
                      ESP.getFreeHeap(),
                      (float)batteryVoltage / 10.0);
 
@@ -447,16 +452,32 @@ void loop() {
     Serial.println(csvData);
     writeToLog(SD, csvData);
 
-    memcpy(packet + SSDV_PKT_SIZE, &telem, sizeof(telem));
-    size_t total_tx_size = SSDV_PKT_SIZE + sizeof(telem);
+    // transmit telemetry every 3rd SSDV packet, SSDV-only otherwise
+    bool send_telem = (ssdv_pkt_count % 3 == 0);
 
-    // this takes roughly 1960 ms to transmit
-    int state = radio.transmit((uint8_t *)packet, total_tx_size);
+    // ~ 350ms time on air
+    if (send_telem) {
+      uint8_t telem_packet[36];
+      memcpy(telem_packet, &telem, sizeof(telem));
+      int state = radio.transmit((uint8_t *)telem_packet, sizeof(telem));
+      if (state == RADIOLIB_ERR_NONE) {
+        Serial.println(F("Transmission success (telemetry only)!"));
+      } else {
+        Serial.printf("Transmission failed, code %d\n", state);
+      }
+    }
+
+    delay(15);
+
+    // ~ 1730ms time on air
+    int state = radio.transmit((uint8_t *)packet, SSDV_PKT_SIZE);
     if (state == RADIOLIB_ERR_NONE) {
-      Serial.println(F("Transmission success (SSDV + telemetry)!"));
+      Serial.println(F("Transmission success (SSDV)!"));
     } else {
       Serial.printf("Transmission failed, code %d\n", state);
     }
+
+    ssdv_pkt_count++;
   }
 
   esp_camera_fb_return(fb_ssdv);

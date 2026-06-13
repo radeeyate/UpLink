@@ -5,7 +5,7 @@ import struct
 import csv
 from datetime import datetime
 
-TELEMETRY_FORMAT = "<iiIHhiBhhhhIB"
+TELEMETRY_FORMAT = "<iiIHhiBhhhhIBB"
 TELEMETRY_SIZE = struct.calcsize(TELEMETRY_FORMAT)
 SSDV_PACKET_SIZE = 220
 
@@ -13,7 +13,8 @@ CSV_FILENAME = "../telemetry-dashboard/public/data/telemetry.csv"
 CSV_HEADERS = [
     "timestamp_received", "lat", "lng", "alt", "ground_speed", 
     "climb_rate", "timestamp", "satellite_fixes", "mcu_temp", 
-    "foam_pla_temp", "pla_temp", "out_temp", "ram", "batt_v", "image_name"
+    "foam_pla_temp", "pla_temp", "out_temp", "ram", "batt_v",
+    "sd_card_ok", "camera_ok", "gps_fix_ok", "image_name"
 ]
 
 def init_csv():
@@ -42,7 +43,10 @@ def decode_telemetry(data):
         "pla_temp": vals[9] / 100.0,
         "out_temp": vals[10] / 100.0,
         "ram": vals[11],
-        "batt_v": vals[12] / 10.0
+        "batt_v": vals[12] / 10.0,
+        "sd_card_ok": bool(vals[13] & (1 << 0)),
+        "camera_ok": bool(vals[13] & (1 << 1)),
+        "gps_fix_ok": bool(vals[13] & (1 << 2)),
     }
 
 def save_to_csv(telemetry):
@@ -60,6 +64,10 @@ def get_newest_image_name(directory="."):
         return ""
     newest = max(jpg_files, key=lambda f: os.path.getmtime(os.path.join(directory, f)))
     return newest
+
+def is_ssdv_packet(data):
+    """Check if data starts with the SSDV sync word (0x55 0x66 or 0x55 0x67)."""
+    return len(data) >= 2 and data[0] == 0x55 and data[1] in (0x66, 0x67)
 
 context = zmq.Context()
 socket = context.socket(zmq.SUB)
@@ -93,42 +101,42 @@ while True:
             
             if sync_index != -1:
                 raw_payload = all_bytes[sync_index:]
+            elif len(all_bytes) >= TELEMETRY_SIZE:
+                # No SSDV sync — likely a telemetry-only packet
+                raw_payload = all_bytes
             else:
-                print(f"[X] Dropped packet: Could not find RadioHead/SSDV signature in raw vector of length {len(all_bytes)}")
+                print(f"[X] Dropped packet: No SSDV signature and not telemetry size ({len(all_bytes)} bytes)")
                 continue
 
         if raw_payload:
             if len(raw_payload) < 6:
                 continue
-            
+
+            # Telemetry-only packet (no SSDV sync word)
+            if not is_ssdv_packet(raw_payload):
+                telem_raw = raw_payload[:TELEMETRY_SIZE]
+                telemetry = decode_telemetry(telem_raw)
+                if telemetry:
+                    telemetry["image_name"] = get_newest_image_name(".")
+                    save_to_csv(telemetry)
+                    print(f"[+] Telemetry: Lat={telemetry['lat']:.6f}, Lon={telemetry['lng']:.6f}, Alt={telemetry['alt']:.2f}m")
+                continue
+
+            # SSDV packet — strip 4-byte RadioHead header
             ssdv_data = raw_payload[4:]
-            telemetry = None
             
             if ssdv_data[0] != 0x55 or ssdv_data[1] not in (0x66, 0x67):
                 print(f"[X] Alignment error: Expected SSDV sync word, got {ssdv_data[:2].hex()}")
                 continue
-
-            # SSDV payload is 220 bytes, telemetry (34 bytes) is appended after it
-            if len(ssdv_data) >= SSDV_PACKET_SIZE + TELEMETRY_SIZE:
-                ssdv_packet = ssdv_data[:SSDV_PACKET_SIZE]
-                telem_raw = ssdv_data[SSDV_PACKET_SIZE:SSDV_PACKET_SIZE + TELEMETRY_SIZE]
-                telemetry = decode_telemetry(telem_raw)
-            else:
-                ssdv_packet = ssdv_data
                 
             filename = f"01_{message_counter:05}.ssdv"
             with open(filename, "wb") as f:
-                f.write(ssdv_packet)
+                f.write(ssdv_data)
                 
             message_counter += 1
-            print(f"[+] Saved pristine SSDV packet {message_counter} ({len(ssdv_packet)} bytes)")
+            print(f"[+] Saved SSDV packet {message_counter} ({len(ssdv_data)} bytes)")
             
             os.system("../../firmware/balloon/tools/ssdv_decode ./ image")
-
-            if telemetry:
-                telemetry["image_name"] = get_newest_image_name(".")
-                save_to_csv(telemetry)
-                print(f"[+] Telemetry: Lat={telemetry['lat']:.6f}, Lon={telemetry['lng']:.6f}, Alt={telemetry['alt']:.2f}m, Image={telemetry['image_name']}")
             
     except Exception as e:
         print(f"Error processing packet: {e}")
