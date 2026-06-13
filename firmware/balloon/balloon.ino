@@ -452,8 +452,8 @@ void loop() {
     Serial.println(csvData);
     writeToLog(SD, csvData);
 
-    // transmit telemetry every 3rd SSDV packet, SSDV-only otherwise
-    bool send_telem = (ssdv_pkt_count % 3 == 0);
+    // transmit telemetry every 2nd SSDV packet, SSDV-only otherwise
+    bool send_telem = (ssdv_pkt_count % 2 == 0);
 
     // ~ 350ms time on air
     if (send_telem) {
@@ -469,7 +469,7 @@ void loop() {
 
     delay(150);
 
-    // ~ 1730ms time on air
+    // ~ 1040ms time on air
     int state = radio.transmit((uint8_t *)packet, SSDV_PKT_SIZE);
     if (state == RADIOLIB_ERR_NONE) {
       Serial.println(F("Transmission success (SSDV)!"));

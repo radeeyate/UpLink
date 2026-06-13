@@ -7,7 +7,7 @@
 #include "../ssdv.h"
 
 #define MAX_TOTAL_PACKETS 10000
-#define PACKET_SIZE (220)
+#define PACKET_SIZE (128)
 
 typedef struct {
     uint16_t image_id;

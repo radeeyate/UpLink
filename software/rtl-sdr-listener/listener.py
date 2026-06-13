@@ -3,11 +3,12 @@ import pmt
 import os
 import struct
 import csv
+import shutil
 from datetime import datetime
 
 TELEMETRY_FORMAT = "<iiIHhiBhhhhIBB"
 TELEMETRY_SIZE = struct.calcsize(TELEMETRY_FORMAT)
-SSDV_PACKET_SIZE = 220
+SSDV_PACKET_SIZE = 128
 
 CSV_FILENAME = "../telemetry-dashboard/public/data/telemetry.csv"
 CSV_HEADERS = [
@@ -140,6 +141,13 @@ while True:
             print(f"[+] Saved SSDV packet {message_counter} ({len(ssdv_data)} bytes)")
             
             os.system("../../firmware/balloon/tools/ssdv_decode ./ image")
+
+            newest_image = get_newest_image_name(".")
+            if newest_image:
+                dest = "../telemetry-dashboard/public/data/images/"
+                os.makedirs(dest, exist_ok=True)
+                shutil.copy(newest_image, os.path.join(dest, newest_image))
+                print(f"Copied image to {dest}{newest_image}")
             
     except Exception as e:
         print(f"Error processing packet: {e}")

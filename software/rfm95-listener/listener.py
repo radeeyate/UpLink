@@ -12,7 +12,7 @@ from digitalio import DigitalInOut
 
 TELEMETRY_FORMAT = "<iiIHhiBhhhhIBB"
 TELEMETRY_SIZE = struct.calcsize(TELEMETRY_FORMAT)  # 35 bytes
-SSDV_PACKET_SIZE = 220  # 220 bytes
+SSDV_PACKET_SIZE = 128  # 128 bytes
 
 CSV_FILENAME = "../telemetry-dashboard/.next/standalone/public/data/telemetry.csv"
 IMAGE_DEST_DIR = "../telemetry-dashboard/.next/standalone/public/data/images/"
