@@ -31,8 +31,8 @@ def decode_telemetry(data):
     
     return {
         "timestamp_received": datetime.now().isoformat(),
-        "lat": vals[0] / 1000000.0,
-        "lng": vals[1] / 1000000.0,
+        "lat": vals[0] / 10000000.0,
+        "lng": vals[1] / 10000000.0,
         "alt": vals[2] / 100.0,
         "ground_speed": vals[3]/100,
         "climb_rate": vals[4]/100,
@@ -95,7 +95,7 @@ while True:
             
             sync_index = -1
             for i in range(len(all_bytes) - 5):
-                if all_bytes[i+4] == 0x55 and all_bytes[i+5] in (0x66, 0x67):
+                if all_bytes[i] == 0x55 and all_bytes[i+1] in (0x66, 0x67):
                     sync_index = i
                     break
             
@@ -114,7 +114,10 @@ while True:
 
             # Telemetry-only packet (no SSDV sync word)
             if not is_ssdv_packet(raw_payload):
-                telem_raw = raw_payload[:TELEMETRY_SIZE]
+                # gr-lora prepends 18 bytes of metadata; struct is at offset 18
+                if len(raw_payload) < 18 + TELEMETRY_SIZE:
+                    continue
+                telem_raw = raw_payload[18:18 + TELEMETRY_SIZE]
                 telemetry = decode_telemetry(telem_raw)
                 if telemetry:
                     telemetry["image_name"] = get_newest_image_name(".")
@@ -122,8 +125,8 @@ while True:
                     print(f"[+] Telemetry: Lat={telemetry['lat']:.6f}, Lon={telemetry['lng']:.6f}, Alt={telemetry['alt']:.2f}m")
                 continue
 
-            # SSDV packet — strip 4-byte RadioHead header
-            ssdv_data = raw_payload[4:]
+            # SSDV packet — no header from GNU Radio
+            ssdv_data = raw_payload
             
             if ssdv_data[0] != 0x55 or ssdv_data[1] not in (0x66, 0x67):
                 print(f"[X] Alignment error: Expected SSDV sync word, got {ssdv_data[:2].hex()}")

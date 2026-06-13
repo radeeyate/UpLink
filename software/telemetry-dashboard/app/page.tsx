@@ -23,7 +23,7 @@ export default function Dashboard() {
   
   const sliderRef = useRef<HTMLInputElement>(null);
 
-  const [startTransition] = useTransition();
+  const [, startTransition] = useTransition();
   const [debouncedScrubIndex] = useDebounce(scrubIndex, 120);
 
   useEffect(() => {
@@ -53,7 +53,7 @@ export default function Dashboard() {
 
   const targetIndex = scrubIndex !== null ? scrubIndex : data.length - 1;
   const currentPacket = data.length > 0 ? data[targetIndex] : null;
-  const latestTimestamp = currentPacket?.timestamp || null;
+  const latestTimestamp = currentPacket?.timestamp ?? null;
 
   let latestImageSrc = null;
   if (data.length > 0) {
@@ -65,10 +65,17 @@ export default function Dashboard() {
     }
   }
 
+  const cutoffTimestamp = Date.UTC(2026, 0, 1) / 1000;
   const heavyActiveData = useMemo(() => {
-    return debouncedScrubIndex !== null && data.length > 0 
-      ? data.slice(0, debouncedScrubIndex + 1) 
-      : data;
+    let source = data;
+    if (debouncedScrubIndex !== null && data.length > 0) {
+      source = data.slice(0, debouncedScrubIndex + 1);
+    }
+    return source.filter((d: any) => {
+      if (typeof d.timestamp !== "number") return false;
+      const ts = d.timestamp > 20000000000 ? d.timestamp / 1000 : d.timestamp;
+      return ts >= cutoffTimestamp;
+    });
   }, [debouncedScrubIndex, data]);
 
   const memoizedMap = useMemo(() => (

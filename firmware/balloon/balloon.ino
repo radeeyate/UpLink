@@ -467,7 +467,7 @@ void loop() {
       }
     }
 
-    delay(15);
+    delay(150);
 
     // ~ 1730ms time on air
     int state = radio.transmit((uint8_t *)packet, SSDV_PKT_SIZE);
@@ -478,6 +478,8 @@ void loop() {
     }
 
     ssdv_pkt_count++;
+
+    Serial.printf("sd %d\n", sdCardError);
   }
 
   esp_camera_fb_return(fb_ssdv);

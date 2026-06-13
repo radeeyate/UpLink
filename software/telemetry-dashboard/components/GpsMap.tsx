@@ -24,7 +24,7 @@ function RecenterButton({ center }: { center: [number, number] }) {
 
 export default function GpsMap({ data }: { data: any[] }) {
   // Filter for valid GPS data
-  const validData = data.filter(d => d.lat != null && d.lng != null);
+  const validData = data.filter(d => d.gps_fix_ok === true);
 
   if (!validData.length) {
     return (
