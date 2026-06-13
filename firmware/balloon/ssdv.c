@@ -1261,7 +1261,7 @@ char ssdv_dec_feed(ssdv_t *s, uint8_t *packet)
 		}
 		
 		/* Display information about the image */
-		fprintf(stderr, "Image ID: %u\n", s->image_id);
+		fprintf(stderr, "Image ID: %04X\n", s->image_id);
 		fprintf(stderr, "Resolution: %ix%i\n", s->width, s->height);
 		fprintf(stderr, "MCU blocks: %i\n", s->mcu_count);
 		fprintf(stderr, "Sampling factor: %s\n", factor);
