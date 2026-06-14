@@ -45,12 +45,6 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, []);
 
-  useEffect(() => {
-    if (scrubIndex === null && sliderRef.current) {
-      sliderRef.current.value = String(data.length - 1);
-    }
-  }, [data.length, scrubIndex]);
-
   const targetIndex = scrubIndex !== null ? scrubIndex : data.length - 1;
   const currentPacket = data.length > 0 ? data[targetIndex] : null;
   const latestTimestamp = currentPacket?.timestamp ?? null;
@@ -95,7 +89,7 @@ export default function Dashboard() {
         <Line type="monotone" dataKey="alt" stroke="#a855f7" name="Altitude" dot={false} isAnimationActive={false} />
       </ChartCard>
 
-      <ChartCard title="RAM Free (B)" data={heavyActiveData}>
+      <ChartCard title="RAM Usage (MB)" data={heavyActiveData}>
         <Line type="monotone" dataKey="ram" stroke="#22d3ee" name="RAM" dot={false} isAnimationActive={false} />
       </ChartCard>
 
@@ -114,9 +108,6 @@ export default function Dashboard() {
           <button 
              onClick={() => {
                setScrubIndex(null);
-               if (sliderRef.current) {
-                 sliderRef.current.value = String(data.length - 1);
-               }
              }}
              className={`px-4 py-2 rounded text-sm font-semibold transition-colors ${scrubIndex === null ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}
           >
