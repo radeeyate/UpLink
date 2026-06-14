@@ -452,25 +452,21 @@ void loop() {
     Serial.println(csvData);
     writeToLog(SD, csvData);
 
-    // transmit telemetry every 2nd SSDV packet, SSDV-only otherwise
-    bool send_telem = (ssdv_pkt_count % 2 == 0);
-
     // ~ 350ms time on air
-    if (send_telem) {
-      uint8_t telem_packet[36];
-      memcpy(telem_packet, &telem, sizeof(telem));
-      int state = radio.transmit((uint8_t *)telem_packet, sizeof(telem));
-      if (state == RADIOLIB_ERR_NONE) {
-        Serial.println(F("Transmission success (telemetry only)!"));
-      } else {
-        Serial.printf("Transmission failed, code %d\n", state);
-      }
+    uint8_t telem_packet[36];
+    memcpy(telem_packet, &telem, sizeof(telem));
+    int state = radio.transmit((uint8_t *)telem_packet, sizeof(telem));
+    if (state == RADIOLIB_ERR_NONE) {
+      Serial.println(F("Transmission success (telemetry only)!"));
+    } else {
+      Serial.printf("Transmission failed, code %d\n", state);
     }
 
-    delay(150);
+
+    delay(15);
 
     // ~ 1040ms time on air
-    int state = radio.transmit((uint8_t *)packet, SSDV_PKT_SIZE);
+    state = radio.transmit((uint8_t *)packet, SSDV_PKT_SIZE);
     if (state == RADIOLIB_ERR_NONE) {
       Serial.println(F("Transmission success (SSDV)!"));
     } else {
@@ -478,8 +474,6 @@ void loop() {
     }
 
     ssdv_pkt_count++;
-
-    Serial.printf("sd %d\n", sdCardError);
   }
 
   esp_camera_fb_return(fb_ssdv);

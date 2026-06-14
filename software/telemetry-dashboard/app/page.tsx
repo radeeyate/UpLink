@@ -46,7 +46,7 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
-    if (scrubIndex === null && sliderRef.current && data.length > 0) {
+    if (scrubIndex === null && sliderRef.current) {
       sliderRef.current.value = String(data.length - 1);
     }
   }, [data.length, scrubIndex]);
@@ -95,7 +95,7 @@ export default function Dashboard() {
         <Line type="monotone" dataKey="alt" stroke="#a855f7" name="Altitude" dot={false} isAnimationActive={false} />
       </ChartCard>
 
-      <ChartCard title="RAM Usage (MB)" data={heavyActiveData}>
+      <ChartCard title="RAM Free (B)" data={heavyActiveData}>
         <Line type="monotone" dataKey="ram" stroke="#22d3ee" name="RAM" dot={false} isAnimationActive={false} />
       </ChartCard>
 
@@ -127,9 +127,8 @@ export default function Dashboard() {
             ref={sliderRef}
             type="range" 
             min="0" 
-            max={data.length - 1} 
-            key={data.length > 0 ? "loaded" : "loading"}
-            defaultValue={data.length > 0 ? data.length - 1 : 0}
+            max={Math.max(0, data.length - 1)} 
+            value={scrubIndex !== null ? scrubIndex : Math.max(0, data.length - 1)}
             onChange={(e) => {
               const val = parseInt(e.target.value);
               startTransition(() => {
