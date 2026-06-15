@@ -1,5 +1,7 @@
 import csv
 import os
+import glob
+import subprocess
 import shutil
 import struct
 import time
@@ -14,8 +16,8 @@ TELEMETRY_FORMAT = "<iiIHhiBhhhhIBB"
 TELEMETRY_SIZE = struct.calcsize(TELEMETRY_FORMAT)  # 35 bytes
 SSDV_PACKET_SIZE = 128  # 128 bytes
 
-CSV_FILENAME = "../telemetry-dashboard/.next/standalone/public/data/telemetry.csv"
-IMAGE_DEST_DIR = "../telemetry-dashboard/.next/standalone/public/data/images/"
+CSV_FILENAME = "../telemetry-dashboard/standalone/public/data/telemetry.csv"
+IMAGE_DEST_DIR = "../telemetry-dashboard/standalone/public/data/images/"
 CSV_HEADERS = [
     "timestamp_received",
     "lat",
@@ -51,7 +53,7 @@ except RuntimeError as error:
 
 rfm9x.spreading_factor = 9
 rfm9x.frequency_mhz = 915.0
-rfm9x.coding_rate = 8
+rfm9x.coding_rate = 5
 rfm9x.low_datarate_optimize = False
 rfm9x.enable_crc = True
 
@@ -72,8 +74,8 @@ def decode_telemetry(data):
 
     return {
         "timestamp_received": datetime.now().isoformat(),
-        "lat": vals[0] / 1000000.0,
-        "lng": vals[1] / 1000000.0,
+        "lat": vals[0] / 10000000.0,
+        "lng": vals[1] / 10000000.0,
         "alt": vals[2] / 100.0,
         "ground_speed": vals[3] / 100.0,
         "climb_rate": vals[4] / 100.0,
@@ -114,9 +116,34 @@ def is_ssdv_packet(data):
     return len(data) >= 2 and data[0] == 0x55 and data[1] in (0x66, 0x67)
 
 
+def get_next_message_counter():
+    """Scans the current directory for 01_XXXXX.ssdv files and returns the next index."""
+    existing_files = glob.glob("01_*.ssdv")
+    if not existing_files:
+        return 0
+    
+    indices = []
+    for f in existing_files:
+        try:
+            parts = f.split('_')
+            if len(parts) > 1:
+                idx = int(parts[1].split('.')[0])
+                indices.append(idx)
+        except ValueError:
+            continue
+            
+    return max(indices) + 1 if indices else 0
+
+
 print("Starting Physical LoRa Receiver...")
 init_csv()
-message_counter = 0
+
+# Smart resume: Find the latest counter so we don't overwrite older data
+message_counter = get_next_message_counter()
+print(f"Next SSDV packet index will be: {message_counter}")
+
+# Background worker tracker
+decode_process = None
 
 while True:
     packet = rfm9x.receive(with_header=True)
@@ -159,9 +186,12 @@ while True:
             )
             message_counter += 1
 
-            os.system("../../firmware/balloon/tools/ssdv_decode ./ image")
+            if decode_process is None or decode_process.poll() is not None:
+                decode_process = subprocess.Popen("../../firmware/balloon/tools/ssdv_decode ./ image", shell=True)
+            else:
+                pass
 
         except Exception as e:
             print(f"Error processing packet: {e}")
 
-    time.sleep(0.1)
+    time.sleep(0.01)
