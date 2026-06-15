@@ -6,6 +6,7 @@ import {
   CartesianGrid, Tooltip, ResponsiveContainer, Legend 
 } from 'recharts';
 import { useDebounce } from 'use-debounce';
+import Papa from 'papaparse';
 
 import dynamic from 'next/dynamic';
 import { formatTimestamp } from '../utils/dateUtils'; 
@@ -24,15 +25,33 @@ export default function Dashboard() {
   const sliderRef = useRef<HTMLInputElement>(null);
 
   const [, startTransition] = useTransition();
-  const [debouncedScrubIndex] = useDebounce(scrubIndex, 120);
+  const [debouncedScrubIndex] = useDebounce(scrubIndex, 10);
 
   useEffect(() => {
+    const NUM_KEYS = ['lat', 'lng', 'alt', 'ground_speed', 'climb_rate', 'timestamp', 'satellite_fixes', 'mcu_temp', 'foam_pla_temp', 'pla_temp', 'out_temp', 'ram', 'batt_v', 'timestamp_received'];
+    const BOOL_KEYS = ['sd_card_ok', 'camera_ok', 'gps_fix_ok'];
+
     const fetchData = async () => {
       try {
         const res = await fetch('/api/telemetry', { cache: 'no-store' });
         if (res.ok) {
-          const jsonData = await res.json();
-          setData(jsonData);
+          const csvText = await res.text();
+          const parsed = Papa.parse(csvText, { header: true, skipEmptyLines: true });
+          const records = (parsed.data as any[]).map((row: any) => {
+            const obj: any = {};
+            for (const key of Object.keys(row)) {
+              const val = row[key];
+              if (BOOL_KEYS.includes(key)) {
+                obj[key] = val === "True";
+              } else if (NUM_KEYS.includes(key) && typeof val === 'string' && val.trim() !== '') {
+                obj[key] = Number(val);
+              } else {
+                obj[key] = val;
+              }
+            }
+            return obj;
+          });
+          setData(records);
         }
       } catch (error) {
         console.error('Failed to fetch telemetry data:', error);
@@ -53,7 +72,7 @@ export default function Dashboard() {
   if (data.length > 0) {
     for (let i = targetIndex; i >= 0; i--) {
       if (data[i]?.image_name) {
-        latestImageSrc = `/data/images/${data[i].image_name}?t=${latestTimestamp ?? data.length}`;
+        latestImageSrc = `/api/images/${data[i].image_name}?t=${latestTimestamp ?? data.length}`;
         break;
       }
     }

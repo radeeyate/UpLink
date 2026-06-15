@@ -33,7 +33,7 @@ export default function TelemetryStats({ data, targetIndex, isLive = true }: Tel
 
   const firstPacketTimestamp = firstPacketTimestampRef.current;
 
-  if (!data.length) return null;
+  if (!data.length || firstPacketTimestamp === null) return null;
 
   const current = data[targetIndex] || data[data.length - 1];
   if (!current) return null;

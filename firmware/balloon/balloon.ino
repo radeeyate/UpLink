@@ -1,5 +1,6 @@
 #include <RadioLib.h>
 #include <SPI.h>
+#include <WiFi.h>
 #include <SparkFun_u-blox_GNSS_Arduino_Library.h>
 #include <esp_task_wdt.h>
 
@@ -183,8 +184,13 @@ void setup() {
   gnss.setNavigationFrequency(5);
   gnss.saveConfigSelective(VAL_CFG_SUBSEC_IOPORT | VAL_CFG_SUBSEC_NAVCONF);
 
+  WiFi.disconnect(true);
+  WiFi.mode(WIFI_OFF);
+  WiFi.setAutoReconnect(false);
+  btStop();
+
   Serial.println(F("[LORA] Initialising ... "));
-  checkState(radio.begin(915.0, 125.0, 9, 8, 0x12, 22, 8, 1.6, true));
+  checkState(radio.begin(915.0, 125.0, 9, 5, 0x12, 22, 8, 1.6, true));
   radio.setFrequency(915.0, false);
   radio.setCurrentLimit(140);
   radio.setOutputPower(22);
@@ -267,6 +273,8 @@ void setup() {
 }
 
 bool done = false;
+// TODO: figure out what image to start on based on images in dir
+// TODO: same with telemetry, don't add a header to telem if exists
 uint16_t image_id = 1;
 
 void loop() {
@@ -452,7 +460,7 @@ void loop() {
     Serial.println(csvData);
     writeToLog(SD, csvData);
 
-    // ~ 350ms time on air
+    // ~ 255ms time on air
     uint8_t telem_packet[36];
     memcpy(telem_packet, &telem, sizeof(telem));
     int state = radio.transmit((uint8_t *)telem_packet, sizeof(telem));
@@ -465,7 +473,7 @@ void loop() {
 
     delay(15);
 
-    // ~ 1040ms time on air
+    // ~ 685ms time on air
     state = radio.transmit((uint8_t *)packet, SSDV_PKT_SIZE);
     if (state == RADIOLIB_ERR_NONE) {
       Serial.println(F("Transmission success (SSDV)!"));
@@ -474,6 +482,8 @@ void loop() {
     }
 
     ssdv_pkt_count++;
+
+    radio.sleep();
   }
 
   esp_camera_fb_return(fb_ssdv);
