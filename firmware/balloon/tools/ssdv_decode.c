@@ -91,26 +91,25 @@ int main(int argc, char *argv[]) {
 
     struct dirent *entry;
     while ((entry = readdir(dir)) != NULL) {
-        if (strstr(entry->d_name, ".ssdv")) {
-            char full_path[1024];
-            snprintf(full_path, sizeof(full_path), "%s/%s", dir_path, entry->d_name);
+        if (!strstr(entry->d_name, ".ssdv")) continue;
 
-            FILE *f = fopen(full_path, "rb");
-            if (!f) continue;
+        char full_path[1024];
+        snprintf(full_path, sizeof(full_path), "%s/%s", dir_path, entry->d_name);
 
-            if (fread(packets[packet_count].data, 1, PACKET_SIZE, f) == PACKET_SIZE) {
-                ssdv_packet_info_t info;
-                ssdv_dec_header(&info, packets[packet_count].data);
-                packets[packet_count].image_id = info.image_id;
-                packets[packet_count].packet_id = info.packet_id;
-                packet_count++;
-            }
-            fclose(f);
+        FILE *f = fopen(full_path, "rb");
+        if (!f) continue;
 
-            if (packet_count >= MAX_TOTAL_PACKETS) {
-                fprintf(stderr, "Warning: Reached MAX_TOTAL_PACKETS (%d)\n", MAX_TOTAL_PACKETS);
-                break;
-            }
+        if (fread(packets[packet_count].data, 1, PACKET_SIZE, f) == PACKET_SIZE) {
+            ssdv_packet_info_t info;
+            ssdv_dec_header(&info, packets[packet_count].data);
+            packets[packet_count].image_id = info.image_id;
+            packets[packet_count].packet_id = info.packet_id;
+            packet_count++;
+        }
+        fclose(f);
+
+        if (packet_count >= MAX_TOTAL_PACKETS) {
+            break;
         }
     }
     closedir(dir);
@@ -121,16 +120,28 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    qsort(packets, packet_count, sizeof(packet_t), compare_packets);
-
-    int start = 0;
-    for (int i = 1; i <= packet_count; i++) {
-        if (i == packet_count || packets[i].image_id != packets[start].image_id) {
-            decode_image(&packets[start], i - start, out_prefix);
-            start = i;
+    // Find the newest (highest) image_id
+    uint16_t newest_image_id = 0;
+    for (int i = 0; i < packet_count; i++) {
+        if (packets[i].image_id > newest_image_id) {
+            newest_image_id = packets[i].image_id;
         }
     }
 
+    // Collect only packets for the newest image
+    packet_t *newest_packets = malloc(sizeof(packet_t) * packet_count);
+    int newest_count = 0;
+    for (int i = 0; i < packet_count; i++) {
+        if (packets[i].image_id == newest_image_id) {
+            newest_packets[newest_count++] = packets[i];
+        }
+    }
+
+    // Sort and decode only the newest image
+    qsort(newest_packets, newest_count, sizeof(packet_t), compare_packets);
+    decode_image(newest_packets, newest_count, out_prefix);
+
+    free(newest_packets);
     free(packets);
 
     return 0;
