@@ -86,7 +86,7 @@ def decode_telemetry(data):
         "pla_temp": vals[9] / 100.0,
         "out_temp": vals[10] / 100.0,
         "ram": vals[11],
-        "batt_v": vals[12] / 10.0,
+        "batt_v": vals[12] / 50.0,
         "sd_card_ok": bool(vals[13] & (1 << 0)),
         "camera_ok": bool(vals[13] & (1 << 1)),
         "gps_fix_ok": bool(vals[13] & (1 << 2)),
@@ -121,7 +121,7 @@ def get_next_message_counter():
     existing_files = glob.glob("01_*.ssdv")
     if not existing_files:
         return 0
-    
+
     indices = []
     for f in existing_files:
         try:
@@ -131,7 +131,7 @@ def get_next_message_counter():
                 indices.append(idx)
         except ValueError:
             continue
-            
+
     return max(indices) + 1 if indices else 0
 
 
