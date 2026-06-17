@@ -48,6 +48,7 @@ MCP3204 adc;
 #define GPS_FIX_FLAG 2
 
 uint8_t flightState = STATE_PAD;
+uint16_t image_id = 1;
 
 const int SD_CS = 21;       // SD card chip select
 const int SX1262_NSS = 4;   // radio chip select
@@ -62,7 +63,7 @@ const int SPI_MOSI = 9;
 const int SPI_MISO = 8;
 
 esp_task_wdt_config_t wdtConfig = {
-  .timeout_ms = 10000,
+  .timeout_ms = 20000,
   .idle_core_mask = (1 << 1),
   .trigger_panic = true
 };
@@ -83,7 +84,7 @@ void checkState(int16_t state) {
 void writeToLog(fs::FS &fs, const String &message) {
   File file = fs.open("/telemetry.csv", FILE_APPEND);
   if (!file) {
-    Serial.println("Failed to open file for writing");
+    Serial.println("Failed to open telemetry for writing");
     sdCardError = true;
     return;
   }
@@ -103,7 +104,7 @@ void writeFile(fs::FS &fs, const char *path, uint8_t *data, size_t len) {
 
   File file = fs.open(path, FILE_WRITE);
   if (!file) {
-    Serial.println("Failed to open file for writing");
+    Serial.println("Failed to open image for writing");
     sdCardError = true;
     return;
   }
@@ -125,6 +126,93 @@ int16_t getTemperature(uint8_t channel) {
 
   int16_t normalizedTemperature = round(temperatureC * 100);
   return normalizedTemperature;
+}
+
+uint16_t loadSSDVState(fs::FS &fs) {
+  File file = fs.open("/.ssdv_state", FILE_READ);
+  if (file) {
+    uint16_t startingState = (uint16_t)file.parseInt();
+    file.close();
+
+    if (startingState == 0) {
+      Serial.println("Failed to fetch SSDV state");
+      return 1;
+    }
+
+    // we want the what the new image id should be
+    return startingState + 1;
+  } else {
+    file = fs.open(".ssdv_state", FILE_WRITE);
+    if (file) {
+      file.print("1");
+      file.close();
+
+      Serial.println("Created .ssdv_state file and initialized at 1");
+      return 1;
+    } else {
+      Serial.println("Failed to create .ssdv_state file");
+    }
+    return 1;
+  }
+}
+
+void saveSSDVState(fs::FS &fs, uint16_t ssdvState) {
+  File file = fs.open("/.ssdv_state", FILE_WRITE);
+  if (!file) {
+    Serial.println("Failed to open .ssdv_state for writing");
+    sdCardError = true;
+    return;
+  }
+
+  if (file.printf("%d", ssdvState)) {
+    Serial.println("Saved SSDV state on disk");
+    sdCardError = false;
+  } else {
+    Serial.println("Failed to save SSDV state to disk");
+    sdCardError = true;
+  }
+  file.close();
+}
+
+bool loadAssistedGPS(fs::FS &fs, const char *path) {
+  Serial.printf("Opening A-GPS file: %s\n", path);
+  File file = fs.open(path, FILE_READ);
+  if (!file) {
+    Serial.println("A-GPS data file not found on SD card.");
+    return false;
+  }
+
+  size_t fileSize = file.size();
+  Serial.printf("A-GPS file found. Size: %d bytes. Uploading...\n", fileSize);
+
+  uint8_t buffer[64];
+  size_t totalBytesSent = 0;
+
+  while (file.available()) {
+    esp_task_wdt_reset();
+
+    int bytesRead = file.read(buffer, sizeof(buffer));
+    if (bytesRead > 0) {
+      Serial1.write(buffer, bytesRead);
+      totalBytesSent += bytesRead;
+    }
+  }
+  file.close();
+  Serial.printf("Finished transferring %d bytes to GNSS module.\n", totalBytesSent);
+
+  delay(500);
+
+  Serial.println("Verifying A-GPS ingestion status...");
+
+  bool connected = gnss.checkUblox();
+
+  if (connected) {
+    Serial.println("GNSS online post-ingestion. Packet parsing verification OK.");
+    return true;
+  } else {
+    Serial.println("Warning: GNSS failed tracking response check after ingestion.");
+    return false;
+  }
 }
 
 void setup() {
@@ -162,15 +250,23 @@ void setup() {
       sdCardError = false;
 
       // initialize telemetry file
-      writeToLog(SD, "lat,lng,alt,ground_speed,climb_rate,timestamp,siv,mcu_temp,foam_pla_temp,pla_temp,out_temp,ram,batt_v");
+      writeToLog(SD, "lat,lng,alt,ground_speed,climb_rate,timestamp,siv,mcu_temp,foam_pla_temp,pla_temp,out_temp,ram,batt_v,sd_ok,camera_ok,gps_fix_ok");
 
       Serial.println("SD Card mounted successfully!");
     }
   }
 
+  uint16_t ssdvState = loadSSDVState(SD);
+  image_id = ssdvState;
+  Serial.printf("Loaded initial SSDV image ID as: %d\n", ssdvState);
+
   Serial1.begin(GPS_BAUD, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
   if (gnss.begin(Serial1) == false) {
     Serial.println(F("SAM M10Q not detected on Serial1"));
+  }
+
+  if (sd_sign) {
+    loadAssistedGPS(SD, "/offline.ubx");
   }
 
   gnss.setUART1Output(COM_TYPE_UBX);
@@ -179,8 +275,7 @@ void setup() {
   } else {
     Serial.println(F("Successfully enabled flight mode"));
   }
-  // having a faster freq (1 -> 5) makes the wait times between packets
-  // much faster, no need to wait 200-800ms for GNSS update.
+
   gnss.setNavigationFrequency(5);
   gnss.saveConfigSelective(VAL_CFG_SUBSEC_IOPORT | VAL_CFG_SUBSEC_NAVCONF);
 
@@ -256,7 +351,6 @@ void setup() {
 
     if (s->id.PID == OV5640_PID) {
       Serial.println("OV5640 detected, setting focus to infinity...");
-      s->set_reg(s, 0x3008, 0xff, 0x01);
       if (s->af_init) s->af_init(s, 2000);
       if (s->af_set_mode) s->af_set_mode(s, 1);
       if (s->af_set_manual_position)
@@ -266,16 +360,12 @@ void setup() {
 
   camera_sign = true;
   cameraError = false;
-  Serial.println("wahoo photos");
   Serial.println("Setup complete!");
 
   esp_task_wdt_reset();
 }
 
 bool done = false;
-// TODO: figure out what image to start on based on images in dir
-// TODO: same with telemetry, don't add a header to telem if exists
-uint16_t image_id = 1;
 
 void loop() {
   esp_task_wdt_reset();
@@ -285,8 +375,10 @@ void loop() {
 
   sensor_t *s = esp_camera_sensor_get();
 
-  // capture full resolution (qsxvga)
-  if (s) s->set_framesize(s, FRAMESIZE_QSXGA);
+  if (s) {
+    s->set_framesize(s, FRAMESIZE_QSXGA);
+    s->set_quality(s, 10);
+  }
 
   delay(250);
 
@@ -296,11 +388,10 @@ void loop() {
     fb_full = esp_camera_fb_get();
     if (fb_full) {
       if (fb_full->width > 2000) {
-        break;  // Successfully got the full res frame
+        break;
       } else {
         Serial.println("STALE IMAGE STUPID");
       }
-      // Discard older resolution leftovers
       esp_camera_fb_return(fb_full);
       fb_full = NULL;
     }
@@ -329,8 +420,10 @@ void loop() {
     cameraError = true;
   }
 
-  // switch to QVGA for SSDV
-  if (s) s->set_framesize(s, FRAMESIZE_QVGA);
+  if (s) {
+    s->set_framesize(s, FRAMESIZE_QVGA);
+    s->set_quality(s, 30);
+  }
 
   camera_fb_t *fb_ssdv = NULL;
   for (int i = 0; i < 5; i++) {
@@ -389,13 +482,10 @@ void loop() {
     long timestamp = gnss.getUnixEpoch();
     float mcuTemp = temperatureRead();
 
-    // 2.5 here is the ADC voltage reference
-    float batteryDividedVoltage = (adc.read(2) * 2.5) / 4095.0;
-    // 2.5 here is the simplified conversion due to the voltage divider
-    uint8_t batteryVoltage = round((batteryDividedVoltage * 2.5) * 10);
+    float actualBatteryVoltage = ((adc.read(2) * 2.5) / 4095.0) * 2.5;
+    uint8_t batteryVoltage = constrain(round(actualBatteryVoltage * 50), 0, 255);
 
     DataPacket telem;
-
     if (SIV >= 4 && isFixOK) {
       double altitudeMeters = rawAltitude / 1000.0;
       uint16_t speed = rawSpeed / 100;
@@ -415,14 +505,13 @@ void loop() {
       telem.altitude = 0;
       telem.groundSpeed = 0;
       telem.climbRate = 0;
-      telem.timestamp = 0;
+      telem.timestamp = timestamp;
     }
 
     telem.satelliteFixes = SIV;
     telem.mcuTemp = (int16_t)round(temperatureRead() * 100);
     telem.outsideTemp = getTemperature(1);
 
-    // TODO: label physically which are which
     telem.foamingPLATemp = getTemperature(0);
     telem.plaTemp = getTemperature(3);
 
@@ -430,15 +519,12 @@ void loop() {
     telem.batteryVoltage = batteryVoltage;
 
     telem.sysFlags = 0;
-    if (!sdCardError) telem.sysFlags |= (1 << SD_CARD_FLAG);  // 1 means it is functioning, 0 is not
-    if (!cameraError) telem.sysFlags |= (1 << CAMERA_FLAG);   // 1 means it is functioning, 0 is not
+    if (!sdCardError) telem.sysFlags |= (1 << SD_CARD_FLAG);
+    if (!cameraError) telem.sysFlags |= (1 << CAMERA_FLAG);
     if (gnss.getGnssFixOk()) telem.sysFlags |= (1 << GPS_FIX_FLAG);
-    // isDescending?
-    // landingDetected?
 
     char csvData[256];
-    // TODO: clean this up
-    int n = snprintf(csvData, sizeof(csvData), "%.7f,%.7f,%.2f,%.2f,%.2f,%u,%u,%.1f,%.2f,%.2f,%.2f,%u,%.1f",
+    int n = snprintf(csvData, sizeof(csvData), "%.7f,%.7f,%.2f,%.2f,%.2f,%u,%u,%.1f,%.2f,%.2f,%.2f,%u,%.2f,%d,%d,%d",
                      rawLatitude / 10000000.0,
                      rawLongitude / 10000000.0,
                      rawAltitude / 1000.0,
@@ -451,7 +537,10 @@ void loop() {
                      getTemperature(3) / 100.0,
                      getTemperature(1) / 100.0,
                      ESP.getFreeHeap(),
-                     (float)batteryVoltage / 10.0);
+                     (float)batteryVoltage / 50.0,
+                     !sdCardError ? 1: 0,
+                     !cameraError ? 1: 0,
+                     gnss.getGnssFixOk() ? 1 : 0);
 
     if (n < 0 || n >= (int)sizeof(csvData)) {
       Serial.print("CSV Truncated. Size: ");
@@ -460,7 +549,6 @@ void loop() {
     Serial.println(csvData);
     writeToLog(SD, csvData);
 
-    // ~ 255ms time on air
     uint8_t telem_packet[36];
     memcpy(telem_packet, &telem, sizeof(telem));
     int state = radio.transmit((uint8_t *)telem_packet, sizeof(telem));
@@ -470,10 +558,8 @@ void loop() {
       Serial.printf("Transmission failed, code %d\n", state);
     }
 
-
     delay(15);
 
-    // ~ 685ms time on air
     state = radio.transmit((uint8_t *)packet, SSDV_PKT_SIZE);
     if (state == RADIOLIB_ERR_NONE) {
       Serial.println(F("Transmission success (SSDV)!"));
@@ -482,10 +568,10 @@ void loop() {
     }
 
     ssdv_pkt_count++;
-
     radio.sleep();
   }
 
-  esp_camera_fb_return(fb_ssdv);
   image_id++;
+  saveSSDVState(SD, image_id);
+  esp_camera_fb_return(fb_ssdv);
 }
