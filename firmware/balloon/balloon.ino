@@ -69,8 +69,6 @@ esp_task_wdt_config_t wdtConfig = {
 };
 
 SX1262 radio = new Module(SX1262_NSS, SX1262_DIO1, SX1262_RST, SX1262_BUSY);
-unsigned long lastTime = 0;
-int count = 0;
 
 bool sdCardError = false;
 bool cameraError = false;
@@ -142,7 +140,7 @@ uint16_t loadSSDVState(fs::FS &fs) {
     // we want the what the new image id should be
     return startingState + 1;
   } else {
-    file = fs.open(".ssdv_state", FILE_WRITE);
+    file = fs.open("/.ssdv_state", FILE_WRITE);
     if (file) {
       file.print("1");
       file.close();
@@ -164,7 +162,7 @@ void saveSSDVState(fs::FS &fs, uint16_t ssdvState) {
     return;
   }
 
-  if (file.printf("%d", ssdvState)) {
+  if (file.printf("%d\n", ssdvState)) {
     Serial.println("Saved SSDV state on disk");
     sdCardError = false;
   } else {
@@ -213,6 +211,100 @@ bool loadAssistedGPS(fs::FS &fs, const char *path) {
     Serial.println("Warning: GNSS failed tracking response check after ingestion.");
     return false;
   }
+}
+
+void sendTelemetry() {
+  gnss.checkUblox();
+  bool isFixOK = gnss.getGnssFixOk();
+  uint8_t SIV = gnss.getSIV();
+  long rawLatitude = gnss.getLatitude();
+  long rawLongitude = gnss.getLongitude();
+  long rawAltitude = gnss.getAltitude();
+  long rawSpeed = gnss.getGroundSpeed();
+  long velocityDown = gnss.getNedDownVel();
+  long timestamp = gnss.getUnixEpoch();
+  float mcuTemp = temperatureRead();
+
+  float actualBatteryVoltage = ((adc.read(2) * 2.5) / 4095.0) * 2.5;
+  uint8_t batteryVoltage = constrain(round(actualBatteryVoltage * 50), 0, 255);
+
+  int16_t formattedFoamingPLATemp = getTemperature(0);
+  int16_t formattedOutsideTemp = getTemperature(1);
+  int16_t formattedPLATemp = getTemperature(3);
+
+  uint32_t espFreeHeap = ESP.getFreeHeap();
+  float mcuTemperature = temperatureRead();
+
+  if (!(SIV >= 4 && isFixOK)) {
+    Serial.printf("Waiting for fix... Satellites in view: %d\n", SIV);
+  }
+
+  DataPacket telem;
+  double altitudeMeters = rawAltitude / 1000.0;
+  uint16_t speed = rawSpeed / 100;
+  int16_t climbRate = (int16_t)((velocityDown * -1) / 100);
+
+  // the gps module will sometimes get valid coordinates
+  // even when it doesn't have a fix. we want to always
+  // report this in case it can't get a fix but we need
+  // to find it
+  telem.lat = rawLatitude;
+  telem.lon = rawLongitude;
+  telem.altitude = (uint32_t)round(altitudeMeters * 100);
+  telem.groundSpeed = (uint16_t)speed;
+  telem.climbRate = climbRate;
+  telem.timestamp = timestamp;
+  telem.satelliteFixes = SIV;
+
+  telem.mcuTemp = (int16_t)round(mcuTemperature * 100);
+  telem.foamingPLATemp = formattedFoamingPLATemp;
+  telem.outsideTemp = formattedOutsideTemp;
+  telem.plaTemp = formattedPLATemp;
+
+  telem.mcuFreeMem = espFreeHeap;
+  telem.batteryVoltage = batteryVoltage;
+
+  telem.sysFlags = 0;
+  if (!sdCardError) telem.sysFlags |= (1 << SD_CARD_FLAG);
+  if (!cameraError) telem.sysFlags |= (1 << CAMERA_FLAG);
+  if (gnss.getGnssFixOk()) telem.sysFlags |= (1 << GPS_FIX_FLAG);
+
+  char csvData[256];
+  int n = snprintf(csvData, sizeof(csvData), "%.7f,%.7f,%.2f,%.2f,%.2f,%u,%u,%.1f,%.2f,%.2f,%.2f,%u,%.2f,%d,%d,%d",
+                   rawLatitude / 10000000.0,
+                   rawLongitude / 10000000.0,
+                   rawAltitude / 1000.0,
+                   rawSpeed / 1000.0,
+                   (velocityDown * -1) / 1000.0,
+                   timestamp,
+                   SIV,
+                   mcuTemperature,
+                   formattedFoamingPLATemp / 100.0,
+                   formattedPLATemp / 100.0,
+                   formattedOutsideTemp / 100.0,
+                   espFreeHeap,
+                   (float)batteryVoltage / 50.0,
+                   !sdCardError ? 1 : 0,
+                   !cameraError ? 1 : 0,
+                   gnss.getGnssFixOk() ? 1 : 0);
+
+  if (n < 0 || n >= (int)sizeof(csvData)) {
+    Serial.print("CSV Truncated. Size: ");
+    Serial.println(n);
+  }
+  Serial.println(csvData);
+  writeToLog(SD, csvData);
+
+  uint8_t telem_packet[36];
+  memcpy(telem_packet, &telem, sizeof(telem));
+  int state = radio.transmit((uint8_t *)telem_packet, sizeof(telem));
+  if (state == RADIOLIB_ERR_NONE) {
+    Serial.println(F("Telemetry transmission success!"));
+  } else {
+    Serial.printf("Transmission failed, code %d\n", state);
+  }
+
+  radio.sleep();
 }
 
 void setup() {
@@ -267,6 +359,8 @@ void setup() {
 
   if (sd_sign) {
     loadAssistedGPS(SD, "/offline.ubx");
+  } else {
+    Serial.println("Skipped loading A-GPS data; SD card isn't inserted")
   }
 
   gnss.setUART1Output(COM_TYPE_UBX);
@@ -338,11 +432,12 @@ void setup() {
 #endif
   }
 
+  // even if camera init fails we MUST get into loop() as
+  // telemetry tranmission is critical
   esp_err_t err = esp_camera_init(&config);
   if (err != ESP_OK) {
     Serial.printf("Camera init failed with error 0x%x", err);
     cameraError = true;
-    return;
   }
 
   sensor_t *s = esp_camera_sensor_get();
@@ -365,10 +460,9 @@ void setup() {
   esp_task_wdt_reset();
 }
 
-bool done = false;
-
 void loop() {
   esp_task_wdt_reset();
+  sendTelemetry();
 
   char filename[1024];
   snprintf(filename, sizeof(filename), "/image_%05u.jpg", image_id);
@@ -382,27 +476,26 @@ void loop() {
 
   delay(250);
 
-  camera_fb_t *fb_full = NULL;
-
+  // full-res capture (QSXGA)
+  camera_fb_t *fb_full = nullptr;
   for (int i = 0; i < 4; i++) {
     fb_full = esp_camera_fb_get();
     if (fb_full) {
       if (fb_full->width > 2000) {
-        break;
+        break;  // valid QSXGA frame
       } else {
-        Serial.println("STALE IMAGE STUPID");
+        Serial.println("STALE IMAGE (full-res)");
       }
       esp_camera_fb_return(fb_full);
-      fb_full = NULL;
+      fb_full = nullptr;
     }
     delay(30);
   }
 
   if (!fb_full) {
-    Serial.println("Failed to get full-res frame buffer");
+    Serial.println("Full-res capture failed, retrying once more...");
     delay(200);
     fb_full = esp_camera_fb_get();
-    return;
   }
 
   if (fb_full) {
@@ -412,20 +505,24 @@ void loop() {
         writeFile(SD, filename, fb_full->buf, fb_full->len);
       }
     } else {
-      Serial.printf("Dropped stale frame on SD read: %dx%d\n", fb_full->width, fb_full->height);
+      // even the retry gave a stale frame
+      Serial.printf("Dropped stale full-res frame: %dx%d\n", fb_full->width, fb_full->height);
+      cameraError = true;  // can’t get a usable full-res image
     }
     esp_camera_fb_return(fb_full);
+    fb_full = nullptr;
   } else {
-    Serial.println("CRITICAL: Failed to retrieve full-res frame buffer completely.");
+    Serial.println("CRITICAL: No full-res frame buffer");
     cameraError = true;
   }
 
+  // QVGA capture for SSDV
   if (s) {
     s->set_framesize(s, FRAMESIZE_QVGA);
     s->set_quality(s, 30);
   }
 
-  camera_fb_t *fb_ssdv = NULL;
+  camera_fb_t *fb_ssdv = nullptr;
   for (int i = 0; i < 5; i++) {
     fb_ssdv = esp_camera_fb_get();
     if (!fb_ssdv) {
@@ -438,140 +535,48 @@ void loop() {
       break;
     }
 
-    Serial.printf("Discarding stale/large frame: %dx%d, %u bytes\n", fb_ssdv->width, fb_ssdv->height, fb_ssdv->len);
+    Serial.printf("Discarding stale/large QVGA frame: %dx%d, %u bytes\n", fb_ssdv->width, fb_ssdv->height, fb_ssdv->len);
     esp_camera_fb_return(fb_ssdv);
-    fb_ssdv = NULL;
+    fb_ssdv = nullptr;
     delay(100);
   }
 
   if (!fb_ssdv) {
     Serial.println("Failed to get a valid QVGA frame buffer");
     cameraError = true;
-    return;
-  }
+  } else {
+    ssdv_t ssdv;
+    uint8_t packet[256];
 
-  ssdv_t ssdv;
-  uint8_t packet[256];
+    if (ssdv_enc_init(&ssdv, SSDV_TYPE_NOFEC, image_id, 3, SSDV_PKT_SIZE) != SSDV_OK) {
+      Serial.println("SSDV Init Failed");
+      esp_camera_fb_return(fb_ssdv);
+    } else {
+      ssdv_enc_set_buffer(&ssdv, packet);
+      ssdv_enc_feed(&ssdv, fb_ssdv->buf, fb_ssdv->len);
 
-  if (ssdv_enc_init(&ssdv, SSDV_TYPE_NOFEC, image_id, 3, SSDV_PKT_SIZE) != SSDV_OK) {
-    Serial.println("SSDV Init Failed");
+      if (fb_ssdv->buf[0] != 0xFF || fb_ssdv->buf[1] != 0xD8) {
+        Serial.println("Warning: QVGA frame does not start with JPEG SOI");
+      }
+
+      while (ssdv_enc_get_packet(&ssdv) == SSDV_HAVE_PACKET) {
+        esp_task_wdt_reset();
+        sendTelemetry();
+        delay(15);
+
+        int state = radio.transmit((uint8_t *)packet, SSDV_PKT_SIZE);
+        if (state == RADIOLIB_ERR_NONE) {
+          Serial.printf("SSDV transmission success!");
+        } else {
+          Serial.printf("Transmission failed, code %d\n", state);
+        }
+
+        radio.sleep();
+      }
+
+      image_id++;
+      saveSSDVState(SD, image_id);
+    }
     esp_camera_fb_return(fb_ssdv);
-    return;
   }
-
-  ssdv_enc_set_buffer(&ssdv, packet);
-  ssdv_enc_feed(&ssdv, fb_ssdv->buf, fb_ssdv->len);
-
-  if (fb_ssdv->buf[0] != 0xFF || fb_ssdv->buf[1] != 0xD8) {
-    Serial.println("Warning: FB does not start with JPEG SOI");
-  }
-
-  int ssdv_pkt_count = 0;
-
-  while (ssdv_enc_get_packet(&ssdv) == SSDV_HAVE_PACKET) {
-    esp_task_wdt_reset();
-
-    gnss.checkUblox();
-    bool isFixOK = gnss.getGnssFixOk();
-    uint8_t SIV = gnss.getSIV();
-    long rawLatitude = gnss.getLatitude();
-    long rawLongitude = gnss.getLongitude();
-    long rawAltitude = gnss.getAltitude();
-    long rawSpeed = gnss.getGroundSpeed();
-    long velocityDown = gnss.getNedDownVel();
-    long timestamp = gnss.getUnixEpoch();
-    float mcuTemp = temperatureRead();
-
-    float actualBatteryVoltage = ((adc.read(2) * 2.5) / 4095.0) * 2.5;
-    uint8_t batteryVoltage = constrain(round(actualBatteryVoltage * 50), 0, 255);
-
-    DataPacket telem;
-    if (SIV >= 4 && isFixOK) {
-      double altitudeMeters = rawAltitude / 1000.0;
-      uint16_t speed = rawSpeed / 100;
-      int16_t climbRate = (int16_t)((velocityDown * -1) / 100);
-
-      telem.lat = rawLatitude;
-      telem.lon = rawLongitude;
-      telem.altitude = (uint32_t)round(altitudeMeters * 100);
-      telem.groundSpeed = (uint16_t)speed;
-      telem.climbRate = climbRate;
-      telem.timestamp = timestamp;
-    } else {
-      Serial.printf("Waiting for fix... Satellites in view: %d\n", SIV);
-
-      telem.lat = 0;
-      telem.lon = 0;
-      telem.altitude = 0;
-      telem.groundSpeed = 0;
-      telem.climbRate = 0;
-      telem.timestamp = timestamp;
-    }
-
-    telem.satelliteFixes = SIV;
-    telem.mcuTemp = (int16_t)round(temperatureRead() * 100);
-    telem.outsideTemp = getTemperature(1);
-
-    telem.foamingPLATemp = getTemperature(0);
-    telem.plaTemp = getTemperature(3);
-
-    telem.mcuFreeMem = (uint32_t)ESP.getFreeHeap();
-    telem.batteryVoltage = batteryVoltage;
-
-    telem.sysFlags = 0;
-    if (!sdCardError) telem.sysFlags |= (1 << SD_CARD_FLAG);
-    if (!cameraError) telem.sysFlags |= (1 << CAMERA_FLAG);
-    if (gnss.getGnssFixOk()) telem.sysFlags |= (1 << GPS_FIX_FLAG);
-
-    char csvData[256];
-    int n = snprintf(csvData, sizeof(csvData), "%.7f,%.7f,%.2f,%.2f,%.2f,%u,%u,%.1f,%.2f,%.2f,%.2f,%u,%.2f,%d,%d,%d",
-                     rawLatitude / 10000000.0,
-                     rawLongitude / 10000000.0,
-                     rawAltitude / 1000.0,
-                     rawSpeed / 1000.0,
-                     (velocityDown * -1) / 1000.0,
-                     timestamp,
-                     SIV,
-                     temperatureRead(),
-                     getTemperature(0) / 100.0,
-                     getTemperature(3) / 100.0,
-                     getTemperature(1) / 100.0,
-                     ESP.getFreeHeap(),
-                     (float)batteryVoltage / 50.0,
-                     !sdCardError ? 1: 0,
-                     !cameraError ? 1: 0,
-                     gnss.getGnssFixOk() ? 1 : 0);
-
-    if (n < 0 || n >= (int)sizeof(csvData)) {
-      Serial.print("CSV Truncated. Size: ");
-      Serial.println(n);
-    }
-    Serial.println(csvData);
-    writeToLog(SD, csvData);
-
-    uint8_t telem_packet[36];
-    memcpy(telem_packet, &telem, sizeof(telem));
-    int state = radio.transmit((uint8_t *)telem_packet, sizeof(telem));
-    if (state == RADIOLIB_ERR_NONE) {
-      Serial.println(F("Transmission success (telemetry only)!"));
-    } else {
-      Serial.printf("Transmission failed, code %d\n", state);
-    }
-
-    delay(15);
-
-    state = radio.transmit((uint8_t *)packet, SSDV_PKT_SIZE);
-    if (state == RADIOLIB_ERR_NONE) {
-      Serial.println(F("Transmission success (SSDV)!"));
-    } else {
-      Serial.printf("Transmission failed, code %d\n", state);
-    }
-
-    ssdv_pkt_count++;
-    radio.sleep();
-  }
-
-  image_id++;
-  saveSSDVState(SD, image_id);
-  esp_camera_fb_return(fb_ssdv);
 }
