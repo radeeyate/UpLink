@@ -360,7 +360,7 @@ void setup() {
   if (sd_sign) {
     loadAssistedGPS(SD, "/offline.ubx");
   } else {
-    Serial.println("Skipped loading A-GPS data; SD card isn't inserted")
+    Serial.println("Skipped loading A-GPS data; SD card isn't inserted");
   }
 
   gnss.setUART1Output(COM_TYPE_UBX);
