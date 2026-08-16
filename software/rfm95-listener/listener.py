@@ -1,11 +1,18 @@
 import csv
+import gzip
+import json
 import os
 import glob
+import queue
 import subprocess
 import shutil
 import struct
+import threading
 import time
-from datetime import datetime
+from datetime import datetime, timezone
+from email.utils import formatdate
+
+import requests
 
 import adafruit_rfm9x
 import board
@@ -15,6 +22,21 @@ from digitalio import DigitalInOut
 TELEMETRY_FORMAT = "<iiIHhiBhhhhIBB"
 TELEMETRY_SIZE = struct.calcsize(TELEMETRY_FORMAT)  # 35 bytes
 SSDV_PACKET_SIZE = 128  # 128 bytes
+
+SONDEHUB_TELEMETRY_URL = "https://api.v2.sondehub.org/amateur/telemetry"
+SONDEHUB_LISTENERS_URL = "https://api.v2.sondehub.org/amateur/listeners"
+PAYLOAD_CALLSIGN = "UPLINK"
+UPLOADER_CALLSIGN = "UPLINK"
+UPLOADER_RADIO = "RFM95W LoRa"
+UPLOADER_ANTENNA = ""
+UPLOADER_POSITION = None  # [lat, lon, alt] to show the station on the map
+SOFTWARE_NAME = "uplink-rfm95-listener"
+SOFTWARE_VERSION = "1.0.0"
+UPLOAD_RATE_SECONDS = 2
+UPLOAD_TIMEOUT_SECONDS = 20
+UPLOAD_RETRIES = 5
+RX_FREQUENCY_MHZ = 915.0
+MODULATION = "LoRa SF9 CR4:5 125kHz"
 
 CSV_FILENAME = "../telemetry-dashboard/standalone/public/data/telemetry.csv"
 IMAGE_DEST_DIR = "../telemetry-dashboard/standalone/public/data/images/"
@@ -56,6 +78,142 @@ rfm9x.frequency_mhz = 915.0
 rfm9x.coding_rate = 5
 rfm9x.low_datarate_optimize = False
 rfm9x.enable_crc = True
+
+
+sondehub_queue = queue.Queue()
+
+
+def sondehub_time(dt):
+    return dt.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+
+def build_sondehub_frame(telemetry, rssi, snr):
+    """Map a decoded telemetry dict onto the SondeHub-Amateur universal format."""
+    if not telemetry["gps_fix_ok"] or telemetry["satellite_fixes"] == 0:
+        return None
+    if telemetry["lat"] == 0.0 and telemetry["lng"] == 0.0:
+        return None
+
+    gps_epoch = telemetry["timestamp"]
+    if gps_epoch > 1000000000:
+        payload_time = datetime.fromtimestamp(gps_epoch, tz=timezone.utc)
+    else:
+        payload_time = datetime.now(timezone.utc)
+
+    frame = {
+        "software_name": SOFTWARE_NAME,
+        "software_version": SOFTWARE_VERSION,
+        "uploader_callsign": UPLOADER_CALLSIGN,
+        "payload_callsign": PAYLOAD_CALLSIGN,
+        "datetime": sondehub_time(payload_time),
+        "time_received": sondehub_time(datetime.now(timezone.utc)),
+        "lat": telemetry["lat"],
+        "lon": telemetry["lng"],
+        "alt": telemetry["alt"],
+        "vel_h": telemetry["ground_speed"],
+        "vel_v": telemetry["climb_rate"],
+        "sats": telemetry["satellite_fixes"],
+        "batt": telemetry["batt_v"],
+        "temp": telemetry["out_temp"],
+        "frequency": RX_FREQUENCY_MHZ,
+        "modulation": MODULATION,
+        "mcu_temp": telemetry["mcu_temp"],
+        "foam_pla_temp": telemetry["foam_pla_temp"],
+        "pla_temp": telemetry["pla_temp"],
+        "ram": telemetry["ram"],
+        "sd_card_ok": telemetry["sd_card_ok"],
+        "camera_ok": telemetry["camera_ok"],
+    }
+
+    if rssi is not None:
+        frame["rssi"] = float(rssi)
+    if snr not in (None, ""):
+        frame["snr"] = float(snr)
+    if UPLOADER_POSITION:
+        frame["uploader_position"] = UPLOADER_POSITION
+    if UPLOADER_RADIO:
+        frame["uploader_radio"] = UPLOADER_RADIO
+    if UPLOADER_ANTENNA:
+        frame["uploader_antenna"] = UPLOADER_ANTENNA
+
+    return frame
+
+
+def upload_to_sondehub(frames):
+    payload = gzip.compress(json.dumps(frames).encode("utf-8"))
+    headers = {
+        "User-Agent": f"{SOFTWARE_NAME}-{SOFTWARE_VERSION}",
+        "Content-Encoding": "gzip",
+        "Content-Type": "application/json",
+        "Date": formatdate(timeval=None, localtime=False, usegmt=True),
+    }
+
+    for attempt in range(UPLOAD_RETRIES):
+        try:
+            response = requests.put(
+                SONDEHUB_TELEMETRY_URL,
+                payload,
+                headers=headers,
+                timeout=(UPLOAD_TIMEOUT_SECONDS, 6.1),
+            )
+        except Exception as e:
+            print(f"    ↳ SondeHub upload failed: {e}")
+            return
+
+        if response.status_code == 200:
+            print(f"    ↳ SondeHub: uploaded {len(frames)} frame(s)")
+            return
+        if response.status_code == 500 and attempt < UPLOAD_RETRIES - 1:
+            continue
+
+        print(
+            f"    ↳ SondeHub upload error {response.status_code}: {response.text[:200]}"
+        )
+        return
+
+
+def sondehub_worker():
+    while True:
+        frames = [sondehub_queue.get()]
+        while True:
+            try:
+                frames.append(sondehub_queue.get_nowait())
+            except queue.Empty:
+                break
+        upload_to_sondehub(frames)
+        time.sleep(UPLOAD_RATE_SECONDS)
+
+
+def upload_station_position():
+    if not UPLOADER_POSITION:
+        return
+
+    station = {
+        "software_name": SOFTWARE_NAME,
+        "software_version": SOFTWARE_VERSION,
+        "uploader_callsign": UPLOADER_CALLSIGN,
+        "uploader_position": UPLOADER_POSITION,
+        "uploader_radio": UPLOADER_RADIO,
+        "uploader_antenna": UPLOADER_ANTENNA,
+        "uploader_contact_email": "",
+        "mobile": False,
+    }
+
+    try:
+        response = requests.put(
+            SONDEHUB_LISTENERS_URL,
+            json=station,
+            headers={
+                "User-Agent": f"{SOFTWARE_NAME}-{SOFTWARE_VERSION}",
+                "Content-Type": "application/json",
+                "Date": formatdate(timeval=None, localtime=False, usegmt=True),
+            },
+            timeout=(UPLOAD_TIMEOUT_SECONDS, 6.1),
+        )
+        if response.status_code != 200:
+            print(f"SondeHub station upload error {response.status_code}")
+    except Exception as e:
+        print(f"SondeHub station upload failed: {e}")
 
 
 def init_csv():
@@ -138,6 +296,10 @@ def get_next_message_counter():
 print("Starting Physical LoRa Receiver...")
 init_csv()
 
+threading.Thread(target=sondehub_worker, daemon=True).start()
+upload_station_position()
+print(f"SondeHub Amateur uploads enabled as {UPLOADER_CALLSIGN}")
+
 # Smart resume: Find the latest counter so we don't overwrite older data
 message_counter = get_next_message_counter()
 print(f"Next SSDV packet index will be: {message_counter}")
@@ -169,6 +331,9 @@ while True:
                         except Exception as e:
                             print(f"    ↳ Failed to copy image: {e}")
                     save_to_csv(telemetry)
+                    frame = build_sondehub_frame(telemetry, rssi, snr)
+                    if frame:
+                        sondehub_queue.put(frame)
                     print(
                         f"[+] Telemetry: Lat={telemetry['lat']:.6f}, Lon={telemetry['lng']:.6f}, Alt={telemetry['alt']:.2f}m"
                     )
