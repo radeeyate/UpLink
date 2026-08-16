@@ -118,12 +118,14 @@ void writeFile(fs::FS &fs, const char *path, uint8_t *data, size_t len) {
 }
 
 int16_t getTemperature(uint8_t channel) {
-  int rawADC = adc.read(channel);
+  long sum = 0;
+  for (int i = 0; i < 16; i++) {
+    sum += adc.read(channel);
+  }
+  int rawADC = sum / 16;
   float voltage = (rawADC * 2.5) / 4095.0;
   float temperatureC = (voltage - 0.5) / 0.01;
-
-  int16_t normalizedTemperature = round(temperatureC * 100);
-  return normalizedTemperature;
+  return round(temperatureC * 100);
 }
 
 uint16_t loadSSDVState(fs::FS &fs) {
@@ -566,7 +568,7 @@ void loop() {
 
         int state = radio.transmit((uint8_t *)packet, SSDV_PKT_SIZE);
         if (state == RADIOLIB_ERR_NONE) {
-          Serial.printf("SSDV transmission success!");
+          Serial.println("SSDV transmission success!");
         } else {
           Serial.printf("Transmission failed, code %d\n", state);
         }
