@@ -47,6 +47,12 @@ MCP3204 adc;
 #define CAMERA_FLAG 1
 #define GPS_FIX_FLAG 2
 
+#define FULL_RES_MIN_WIDTH 2000
+#define FULL_RES_MAX_WIDTH 4000
+#define SSDV_RES_WIDTH 320
+#define CAPTURE_ATTEMPTS 5
+#define PIPELINE_FLUSH_FRAMES 2
+
 uint8_t flightState = STATE_PAD;
 uint16_t image_id = 1;
 
@@ -97,8 +103,116 @@ void writeToLog(fs::FS &fs, const String &message) {
   file.close();
 }
 
+// the camera driver fills in fb->width/fb->height from whatever resolution the
+// sensor is configured for *right now*, not from the resolution the frame was
+// actually captured at. a frame that was already in the pipeline when the
+// resolution changed is therefore mislabelled. the only trustworthy source of
+// the real size is the SOF marker inside the JPEG itself.
+bool jpegDimensions(const uint8_t *data, size_t len, uint16_t *width, uint16_t *height) {
+  if (!data || len < 4 || data[0] != 0xFF || data[1] != 0xD8) {
+    return false;
+  }
+
+  size_t i = 2;
+  while (i + 3 < len) {
+    if (data[i] != 0xFF) {
+      i++;
+      continue;
+    }
+
+    uint8_t marker = data[i + 1];
+
+    // padding byte, skip it and re-examine
+    if (marker == 0xFF) {
+      i++;
+      continue;
+    }
+
+    // standalone markers carry no length field
+    if (marker == 0xD8 || marker == 0x01 || (marker >= 0xD0 && marker <= 0xD7)) {
+      i += 2;
+      continue;
+    }
+
+    // start of scan or end of image: no frame header was found
+    if (marker == 0xDA || marker == 0xD9) {
+      return false;
+    }
+
+    uint16_t segmentLen = ((uint16_t)data[i + 2] << 8) | data[i + 3];
+    if (segmentLen < 2) {
+      return false;
+    }
+
+    bool isStartOfFrame = marker >= 0xC0 && marker <= 0xCF && marker != 0xC4 && marker != 0xC8 && marker != 0xCC;
+    if (isStartOfFrame) {
+      if (i + 8 >= len) {
+        return false;
+      }
+      *height = ((uint16_t)data[i + 5] << 8) | data[i + 6];
+      *width = ((uint16_t)data[i + 7] << 8) | data[i + 8];
+      return true;
+    }
+
+    i += 2 + segmentLen;
+  }
+
+  return false;
+}
+
+bool jpegHasEndMarker(const uint8_t *data, size_t len) {
+  return len >= 2 && data[len - 2] == 0xFF && data[len - 1] == 0xD9;
+}
+
+// throw away frames that were captured before (or across) a resolution change
+void discardStaleFrames(int count) {
+  for (int i = 0; i < count; i++) {
+    esp_task_wdt_reset();
+    camera_fb_t *fb = esp_camera_fb_get();
+    if (!fb) {
+      return;
+    }
+    esp_camera_fb_return(fb);
+  }
+}
+
+// returns a frame whose real, in-JPEG width falls inside the requested range,
+// or nullptr. the caller owns the frame and must return it to the driver.
+camera_fb_t *captureVerifiedFrame(uint16_t minWidth, uint16_t maxWidth, int attempts) {
+  for (int i = 0; i < attempts; i++) {
+    esp_task_wdt_reset();
+
+    camera_fb_t *fb = esp_camera_fb_get();
+    if (!fb) {
+      delay(100);
+      continue;
+    }
+
+    uint16_t realWidth = 0;
+    uint16_t realHeight = 0;
+
+    if (!jpegDimensions(fb->buf, fb->len, &realWidth, &realHeight)) {
+      Serial.printf("Discarding unparsable frame: %u bytes\n", (unsigned)fb->len);
+    } else if (realWidth < minWidth || realWidth > maxWidth) {
+      Serial.printf("Discarding stale frame: really %ux%u (%u bytes), wanted width %u-%u\n",
+                    realWidth, realHeight, (unsigned)fb->len, minWidth, maxWidth);
+    } else {
+      if (!jpegHasEndMarker(fb->buf, fb->len)) {
+        Serial.println("Warning: JPEG has no end marker, image may be truncated");
+      }
+      Serial.printf("Confirmed frame: %ux%u, %u bytes\n", realWidth, realHeight, (unsigned)fb->len);
+      return fb;
+    }
+
+    esp_camera_fb_return(fb);
+    delay(100);
+  }
+
+  return nullptr;
+}
+
 void writeFile(fs::FS &fs, const char *path, uint8_t *data, size_t len) {
-  Serial.printf("Writing file: %s\n", path);
+  Serial.printf("Writing file: %s (%u bytes)\n", path, (unsigned)len);
 
   File file = fs.open(path, FILE_WRITE);
   if (!file) {
@@ -107,14 +221,19 @@ void writeFile(fs::FS &fs, const char *path, uint8_t *data, size_t len) {
     return;
   }
 
-  if (file.write(data, len) == len) {
+  size_t written = file.write(data, len);
+  file.flush();
+  size_t onDisk = file.size();
+  file.close();
+
+  if (written == len && onDisk == len) {
     Serial.println("File written");
     sdCardError = false;
   } else {
-    Serial.println("Write failed");
+    Serial.printf("Write failed: %u of %u bytes written, %u bytes on disk\n",
+                  (unsigned)written, (unsigned)len, (unsigned)onDisk);
     sdCardError = true;
   }
-  file.close();
 }
 
 int16_t getTemperature(uint8_t channel) {
@@ -381,7 +500,7 @@ void setup() {
   btStop();
 
   Serial.println(F("[LORA] Initialising ... "));
-  checkState(radio.begin(915.0, 125.0, 9, 5, 0x12, 22, 8, 1.6, true));
+  checkState(radio.begin(915.0, 125.0, 9, 5, 0x12, 22, 8, 1.6, false));
   radio.setFrequency(915.0, false);
   radio.setCurrentLimit(140);
   radio.setOutputPower(22);
@@ -438,25 +557,29 @@ void setup() {
   // telemetry tranmission is critical
   esp_err_t err = esp_camera_init(&config);
   if (err != ESP_OK) {
-    Serial.printf("Camera init failed with error 0x%x", err);
+    Serial.printf("Camera init failed with error 0x%x\n", err);
     cameraError = true;
-  }
+  } else {
+    camera_sign = true;
+    cameraError = false;
 
-  sensor_t *s = esp_camera_sensor_get();
-  if (s) {
-    s->set_hmirror(s, 1);
+    sensor_t *s = esp_camera_sensor_get();
+    if (s) {
+      s->set_hmirror(s, 1);
 
-    if (s->id.PID == OV5640_PID) {
-      Serial.println("OV5640 detected, setting focus to infinity...");
-      if (s->af_init) s->af_init(s, 2000);
-      if (s->af_set_mode) s->af_set_mode(s, 1);
-      if (s->af_set_manual_position)
-        s->af_set_manual_position(s, 0);
+      if (s->id.PID == OV5640_PID) {
+        Serial.println("OV5640 detected, setting focus to infinity...");
+        if (s->af_init) s->af_init(s, 2000);
+        if (s->af_set_mode) s->af_set_mode(s, 1);
+        if (s->af_set_manual_position)
+          s->af_set_manual_position(s, 0);
+      }
+    } else {
+      Serial.println("Camera initialised but sensor handle is unavailable");
+      cameraError = true;
     }
   }
 
-  camera_sign = true;
-  cameraError = false;
   Serial.println("Setup complete!");
 
   esp_task_wdt_reset();
@@ -466,83 +589,43 @@ void loop() {
   esp_task_wdt_reset();
   sendTelemetry();
 
-  char filename[1024];
+  char filename[32];
   snprintf(filename, sizeof(filename), "/image_%05u.jpg", image_id);
 
   sensor_t *s = esp_camera_sensor_get();
-
-  if (s) {
-    s->set_framesize(s, FRAMESIZE_QSXGA);
-    s->set_quality(s, 10);
+  if (!s) {
+    Serial.println("CRITICAL: camera sensor unavailable, telemetry only");
+    cameraError = true;
+    delay(1000);
+    return;
   }
 
+  // full-res capture (QSXGA) for the SD card
+  s->set_framesize(s, FRAMESIZE_QSXGA);
+  s->set_quality(s, 10);
   delay(250);
+  discardStaleFrames(PIPELINE_FLUSH_FRAMES);
 
-  // full-res capture (QSXGA)
-  camera_fb_t *fb_full = nullptr;
-  for (int i = 0; i < 4; i++) {
-    fb_full = esp_camera_fb_get();
-    if (fb_full) {
-      if (fb_full->width > 2000) {
-        break;  // valid QSXGA frame
-      } else {
-        Serial.println("STALE IMAGE (full-res)");
-      }
-      esp_camera_fb_return(fb_full);
-      fb_full = nullptr;
-    }
-    delay(30);
-  }
-
-  if (!fb_full) {
-    Serial.println("Full-res capture failed, retrying once more...");
-    delay(200);
-    fb_full = esp_camera_fb_get();
-  }
-
+  camera_fb_t *fb_full = captureVerifiedFrame(FULL_RES_MIN_WIDTH, FULL_RES_MAX_WIDTH, CAPTURE_ATTEMPTS);
   if (fb_full) {
-    if (fb_full->width > 2000) {
-      cameraError = false;
-      if (sd_sign) {
-        writeFile(SD, filename, fb_full->buf, fb_full->len);
-      }
-    } else {
-      // even the retry gave a stale frame
-      Serial.printf("Dropped stale full-res frame: %dx%d\n", fb_full->width, fb_full->height);
-      cameraError = true;  // can’t get a usable full-res image
+    cameraError = false;
+    if (sd_sign) {
+      writeFile(SD, filename, fb_full->buf, fb_full->len);
     }
     esp_camera_fb_return(fb_full);
     fb_full = nullptr;
   } else {
-    Serial.println("CRITICAL: No full-res frame buffer");
+    Serial.println("CRITICAL: no usable full-res frame, nothing written to SD");
     cameraError = true;
   }
 
   // QVGA capture for SSDV
-  if (s) {
-    s->set_framesize(s, FRAMESIZE_QVGA);
-    s->set_quality(s, 30);
-  }
+  s->set_framesize(s, FRAMESIZE_QVGA);
+  s->set_quality(s, 30);
+  delay(250);
+  discardStaleFrames(PIPELINE_FLUSH_FRAMES);
 
-  camera_fb_t *fb_ssdv = nullptr;
-  for (int i = 0; i < 5; i++) {
-    fb_ssdv = esp_camera_fb_get();
-    if (!fb_ssdv) {
-      delay(100);
-      continue;
-    }
-
-    if (fb_ssdv->width == 320 && fb_ssdv->len < 50000) {
-      Serial.printf("Confirmed QVGA: %dx%d, %u bytes\n", fb_ssdv->width, fb_ssdv->height, fb_ssdv->len);
-      break;
-    }
-
-    Serial.printf("Discarding stale/large QVGA frame: %dx%d, %u bytes\n", fb_ssdv->width, fb_ssdv->height, fb_ssdv->len);
-    esp_camera_fb_return(fb_ssdv);
-    fb_ssdv = nullptr;
-    delay(100);
-  }
-
+  camera_fb_t *fb_ssdv = captureVerifiedFrame(SSDV_RES_WIDTH, SSDV_RES_WIDTH, CAPTURE_ATTEMPTS);
   if (!fb_ssdv) {
     Serial.println("Failed to get a valid QVGA frame buffer");
     cameraError = true;
@@ -552,14 +635,9 @@ void loop() {
 
     if (ssdv_enc_init(&ssdv, SSDV_TYPE_NOFEC, image_id, 3, SSDV_PKT_SIZE) != SSDV_OK) {
       Serial.println("SSDV Init Failed");
-      esp_camera_fb_return(fb_ssdv);
     } else {
       ssdv_enc_set_buffer(&ssdv, packet);
       ssdv_enc_feed(&ssdv, fb_ssdv->buf, fb_ssdv->len);
-
-      if (fb_ssdv->buf[0] != 0xFF || fb_ssdv->buf[1] != 0xD8) {
-        Serial.println("Warning: QVGA frame does not start with JPEG SOI");
-      }
 
       while (ssdv_enc_get_packet(&ssdv) == SSDV_HAVE_PACKET) {
         esp_task_wdt_reset();
@@ -575,10 +653,14 @@ void loop() {
 
         radio.sleep();
       }
-
-      image_id++;
-      saveSSDVState(SD, image_id);
     }
+
     esp_camera_fb_return(fb_ssdv);
+    fb_ssdv = nullptr;
   }
+
+  // always advance the id, even when a capture or the downlink failed.
+  // reusing it would make the next pass overwrite the image we just saved.
+  saveSSDVState(SD, image_id);
+  image_id++;
 }
